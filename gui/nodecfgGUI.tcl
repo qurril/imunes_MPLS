@@ -7742,3 +7742,244 @@ proc _getAllIpAddresses { node_cfg } {
 
     return "\"$ipv4_list\" \"$ipv6_list\""
 }
+
+#****f* nodecfgGUI.tcl/configGUI_mpls
+# NAME
+#   configGUI_mpls
+# SYNOPSIS
+#   configGUI_mpls $wi $node_id $iface_id
+# FUNCTION
+#   Creates a tab with a pick for choosing between working with
+#   LDP (Label disribution protocol) or Static label switching.
+#   Then allows creation of label switching rules for static option.
+# INPUTS
+#   * tab - its tab
+#   * node_id - node id
+#   
+#****
+
+proc configGUI_mpls {tab node_id} { 
+    global guielements
+    lappend guielements configGUI_mpls
+
+    global selected_mpls_option
+
+    
+    #Section 1 LDP identifier and basic controlls
+    set section1 [ttk::frame $tab.section1]
+    pack $section1 -fill x -pady 10
+
+    #Label input
+    
+    global default_mpls_identifier
+    set default_mpls_identifier 1.1.1.1
+    ttk::label $section1.label -text "Identifier:"
+    ttk::entry $section1.idEntry -textvariable default_mpls_identifier
+    pack $section1.label $section1.idEntry -side left -padx 5
+
+    #MPLS type selection
+    global mpls_type
+    set mpls_type LDP
+    
+    ttk::label $section1.typeLabel1 -text "MPLS Type:"
+    ttk::radiobutton $section1.ldp -text "LDP" -variable mpls_type -value "LDP"
+    ttk::radiobutton $section1.static -text "Static" -variable mpls_type -value "Static"
+    pack $section1.typeLabel1 $section1.ldp $section1.static -side left -padx 5
+
+    
+
+    ttk::separator $tab.sep1 -orient horizontal
+    pack $tab.sep1 -fill x -pady 10
+
+
+    ### Section 2: MPLS intreface information and rules
+    set section2 [ttk::frame $tab.section2]
+    pack $section2 -fill both -expand 1
+
+    #Interface info list
+    set interfaces [ttk::frame $section2.interfaces]
+    pack $interfaces -side left -fill both -expand 1 -padx 5
+
+    
+
+    ttk::label $interfaces.label -text "MPLS interface conf"
+    pack $interfaces.label -side top -fill x -pady 2
+
+    #Box for tree and scroll
+    set interfaceBox [ttk::frame $interfaces.interfaceBox]
+    pack $interfaceBox -side top -fill both -expand 1
+
+    set interfaceTree [ttk::treeview $interfaceBox.tree -columns {Interface Config} -show headings]
+    $interfaceTree heading Interface -text "Interface"
+    $interfaceTree heading Config -text "Enabled"
+    $interfaceTree column Interface -width 90
+    $interfaceTree column Config -width 90
+    pack $interfaceTree -side left -expand 1 -fill both
+
+    #ScrollBars for this tree
+    set vscrollIf [ttk::scrollbar $interfaceBox.vscroll -orient vertical -command "$interfaceTree yview"]
+    $interfaceTree configure -yscrollcommand "$vscrollIf set"
+    pack $vscrollIf -side right -fill y
+
+    #Buttons
+    set interfaceButtons [ttk::frame $interfaces.buttons]
+    pack $interfaceButtons -side bottom -pady 5 
+
+    ttk::button $interfaceButtons.edit -text "Edit interface" -command edit_interface
+    pack $interfaceButtons.edit -side left -pady 5 -expand 1 -padx 5
+
+
+    
+    #MPLS Rules list
+    set rules [ttk::frame $section2.rules]
+    pack $rules -side left -fill both -expand 1 -padx 5
+
+    ttk::label $rules.label -text "MPLS Rules"
+    pack $rules.label -side top -fill x -pady 2
+
+    #Box for rules tree and scrollbar
+    set rulesBox [ttk::frame $rules.rulesBox]
+    pack $rulesBox -side top -fill both -expand 1
+
+    set ruleTree [ttk::treeview $rulesBox.tree -columns {DIPLabel OutLabel Action ExitIf Type} -show headings]
+    $ruleTree heading DIPLabel -text "DestIP/Label"
+    $ruleTree heading OutLabel -text "OutLabel"
+    $ruleTree heading Action -text "Action"
+    $ruleTree heading ExitIf -text "ExitIf"
+    $ruleTree heading Type -text "Type"
+
+    $ruleTree column DIPLabel -width 100
+    $ruleTree column OutLabel -width 80
+    $ruleTree column Action -width 90
+    $ruleTree column ExitIf -width 90
+    $ruleTree column Type -width 90
+    
+    pack $ruleTree -side left -expand 1 -fill both
+
+    set vscroll2 [ttk::scrollbar $rulesBox.vscroll -orient vertical -command "$ruleTree yview"]
+    $ruleTree configure -yscrollcommand "$vscroll2 set"
+    pack $vscroll2 -side right -fill y
+
+    #Buttons
+
+    set buttonFrameRules [ttk::frame $rules.buttons]
+    pack $buttonFrameRules -side bottom -pady 5
+
+    ttk::button $buttonFrameRules.add -text "Add Rule" -command "add_label $ruleTree"
+    ttk::button $buttonFrameRules.remove -text "Remove Rule" -command "del_rule $ruleTree"
+    pack $buttonFrameRules.add $buttonFrameRules.remove -side right -pady 5 -expand 1
+
+
+    ttk::separator $tab.sep2 -orient horizontal
+    pack $tab.sep2 -fill x -pady 10
+
+    ### Section 3: L3 VPN Configuration
+
+
+}
+
+proc add_label {ruleTree} {
+
+    global label_rule_data
+
+    set idx [llength [array names label_rule_data]]
+
+    edit_label_rule_popup $idx $ruleTree
+
+}
+
+proc edit_label_rule_popup {idx ruletree} {
+
+    global label_rule_data node_cfg
+
+    set iface_list [_ifcList $node_cfg]
+    set logiface_list [_logIfcList $node_cfg]
+    set sorted_iface_list {}
+    set sorted_logiface_list {}
+    foreach iface_name [lsort -ascii [_allIfacesNames $node_cfg]] {
+	set iface_id [_ifaceIdFromName $node_cfg $iface_name]
+	if { $iface_id in $iface_list } {
+	    lappend sorted_iface_list $iface_id
+	} elseif { $iface_id in $logiface_list } {
+	    lappend sorted_logiface_list $iface_id
+	}
+    }
+    set all_iface_list [concat $iface_list $logiface_list]
+
+    set interface_names {}
+    foreach iface_id $all_iface_list {
+        lappend interface_names [_getIfcName $node_cfg $iface_id]
+    }
+    
+    global RuleType "Main"
+
+    set selectedInterface ""
+
+    tk::toplevel .edit$idx
+
+    wm title .edit$idx "Rule $idx setup"
+
+    grab .edit$idx
+    
+    ttk::frame .edit$idx.container
+    pack .edit$idx.container -side top -pady 10
+    
+    ttk::label .edit$idx.container.label1 -text "Identifier:"
+    ttk::entry .edit$idx.container.entry1 -width 10
+    pack .edit$idx.container.label1 .edit$idx.container.entry1 -side left
+
+    ttk::label .edit$idx.container.label3 -text "Out Label:"
+    ttk::entry .edit$idx.container.entry3 -width 10
+    pack .edit$idx.container.label3 .edit$idx.container.entry3 -side left
+
+    ttk::label .edit$idx.container.label2 -text "Operation:"
+    ttk::combobox .edit$idx.container.dropdown0 -values {"Pop" "Forward" "Set"} -state readonly
+    pack .edit$idx.container.label2 .edit$idx.container.dropdown0 -side left
+
+    ttk::label .edit$idx.container.labelIFace -text "Interface:"
+    ttk::combobox .edit$idx.container.dropdownIface -values $interface_names -state readonly -textvariable selectedInterface
+    pack .edit$idx.container.labelIFace .edit$idx.container.dropdownIface -side left
+
+    ttk::label .edit$idx.container.labelType -text "Type"
+    ttk::radiobutton .edit$idx.container.typeMain -text "Main" -variable RuleType -value "Main"
+    ttk::radiobutton .edit$idx.container.typeBackup -text "Backup" -variable RuleType -value "Backup"
+    pack .edit$idx.container.labelType .edit$idx.container.typeMain .edit$idx.container.typeBackup -side bottom
+
+    set RuleType "Main"
+
+    ttk::button .edit$idx.container.save -text "Save" -command [list save_rule $idx .edit$idx $ruletree]
+    pack .edit$idx.container.save -side left
+
+}
+
+proc save_rule {idx editidx ruleTree} {
+    global label_rule_data node_cfg RuleType
+    
+    set entry [list \
+    [$editidx.container.entry1 get  ]\
+    [$editidx.container.entry3 get]\
+    [$editidx.container.dropdown0 get]\
+    [$editidx.container.dropdownIface get]\
+    $RuleType
+    ]
+
+    lappend label_rule_data $entry
+
+    $ruleTree insert "" end -values $entry
+
+}
+
+proc del_rule {ruleTree} {
+
+    set selectedItem [$ruleTree selection]
+
+    # Check if an item is actually selected
+    if {$selectedItem ne ""} {
+        # Delete the selected item
+        $ruleTree delete $selectedItem
+        puts "Deleted item: $selectedItem"
+    } else {
+        puts "No item selected!"
+    }
+
+}
