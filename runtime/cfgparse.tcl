@@ -1709,9 +1709,9 @@ proc getImageProperty { image_id property } {
 proc getJsonType { key_name } {
     if { $key_name in "canvases nodes links annotations images custom_configs ipsec_configs ifaces IFACES_CONFIG NODE_CONFIG" } {
 	return "dictionary"
-    } elseif { $key_name in "croutes4 croutes6 ipv4_addrs ipv6_addrs services events tayga_mappings" } {
+    } elseif { $key_name in "croutes4 croutes6 ipv4_addrs ipv6_addrs services events tayga_mappings custom_commands" } {
 	return "array"
-    } elseif { $key_name in "vlan ipsec nat64 packgen packets" } {
+    } elseif { $key_name in "mpls_config vlan ipsec nat64 packgen packets" } {
 	return "inner_dictionary"
     }
 
@@ -1720,7 +1720,7 @@ proc getJsonType { key_name } {
 
 proc createJson { value_type dictionary } {
     set retv {}
-
+	puts "Raw dictionary: <$dictionary> Value type: <$value_type>"
     switch -exact -- $value_type {
 	"dictionary" {
 	    set retv [json::write object {*}[dict map {k v} $dictionary {

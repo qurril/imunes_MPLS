@@ -1253,6 +1253,8 @@ proc configGUI_applyButtonNode { wi node_id phase } {
             $guielement\Apply [lindex [$wi.nbook tabs] 2] $node_id
 	} elseif { $guielement == "configGUI_ipsec" } {
             $guielement\Apply [lindex [$wi.nbook tabs] 2] $node_id
+    } elseif { $guielement == "configGUI_mpls" } {
+            $guielement\Apply [lindex [$wi.nbook tabs] 3] $node_id
         } else {
 	    $guielement\Apply [lindex [$wi.nbook tabs] 0] $node_id
 	}
@@ -7759,11 +7761,12 @@ proc _getAllIpAddresses { node_cfg } {
 #****
 
 proc configGUI_mpls {tab node_id} { 
-    global guielements
+    global guielements node_cfg
     lappend guielements configGUI_mpls
 
     global selected_mpls_option
-
+    global rule_id_list
+    set rule_id_list {}
     
     #Section 1 LDP identifier and basic controlls
     set section1 [ttk::frame $tab.section1]
@@ -7772,14 +7775,36 @@ proc configGUI_mpls {tab node_id} {
     #Label input
     
     global default_mpls_identifier
-    set default_mpls_identifier 1.1.1.1
+    set default_mpls_identifier [_getNodeMplsItem $node_cfg "default_mpls_identifier"]
+
+    if {$default_mpls_identifier == ""} {
+        set default_mpls_identifier 1.1.1.1
+    }
+
     ttk::label $section1.label -text "Identifier:"
     ttk::entry $section1.idEntry -textvariable default_mpls_identifier
     pack $section1.label $section1.idEntry -side left -padx 5
 
+    #Max label setup
+
+    global mpls_label_num
+    set mpls_label_num [_getNodeMplsItem $node_cfg "mpls_label_num"]
+
+    if {$mpls_label_num == ""} {
+        set mpls_label_num 1024
+    }
+
+    ttk::label $section1.label_number -text "Number_of_labels:"
+    ttk::entry $section1.mpls_labelsEntry -textvariable mpls_label_num
+    pack $section1.label_number $section1.mpls_labelsEntry -side left -padx 5
+
     #MPLS type selection
     global mpls_type
-    set mpls_type LDP
+    set mpls_type [_getNodeMplsItem $node_cfg "mpls_type"]
+
+    if {$mpls_type == ""} {
+        set mpls_type LDP
+    }
     
     ttk::label $section1.typeLabel1 -text "MPLS Type:"
     ttk::radiobutton $section1.ldp -text "LDP" -variable mpls_type -value "LDP"
@@ -7811,7 +7836,7 @@ proc configGUI_mpls {tab node_id} {
 
     set interfaceTree [ttk::treeview $interfaceBox.tree -columns {Interface Config} -show headings]
     $interfaceTree heading Interface -text "Interface"
-    $interfaceTree heading Config -text "Enabled"
+    $interfaceTree heading Config -text "Mpls status"
     $interfaceTree column Interface -width 90
     $interfaceTree column Config -width 90
     pack $interfaceTree -side left -expand 1 -fill both
@@ -7825,10 +7850,13 @@ proc configGUI_mpls {tab node_id} {
     set interfaceButtons [ttk::frame $interfaces.buttons]
     pack $interfaceButtons -side bottom -pady 5 
 
-    ttk::button $interfaceButtons.edit -text "Edit interface" -command edit_interface
-    pack $interfaceButtons.edit -side left -pady 5 -expand 1 -padx 5
+    ttk::button $interfaceButtons.enable -text "Enable If" -command "enableMplsInterface $interfaceTree"
+    pack $interfaceButtons.enable -side left -pady 5 -expand 1 -padx 5
 
+    ttk::button $interfaceButtons.disable -text "Disable If" -command "disableMplsInterface $interfaceTree"
+    pack $interfaceButtons.disable -side right -pady 5 -expand 1 -padx 5
 
+    updateMplsIfTree $interfaceTree
     
     #MPLS Rules list
     set rules [ttk::frame $section2.rules]
@@ -7873,19 +7901,75 @@ proc configGUI_mpls {tab node_id} {
     ttk::separator $tab.sep2 -orient horizontal
     pack $tab.sep2 -fill x -pady 10
 
+    update_mpls_rule_tree $ruleTree
     ### Section 3: L3 VPN Configuration
 
 
 }
 
+proc enableMplsInterface {tree} {
+
+    global node_cfg
+    set selectedItem [$tree selection]
+    if {$selectedItem ne ""} {
+        set node_cfg [_setNodeMplsInterface $node_cfg $selectedItem "enabled"]
+    }
+
+    updateMplsIfTree $tree
+
+}
+
+proc disableMplsInterface {tree} {
+    global node_cfg
+    set selectedItem [$tree selection]
+    if {$selectedItem ne ""} {
+        set node_cfg [_setNodeMplsInterface $node_cfg $selectedItem "disabled"]
+    }
+
+    updateMplsIfTree $tree
+}
+
+proc updateMplsIfTree {tree} {
+
+    global node_cfg
+
+    $tree delete [$tree children {}]
+
+    set iface_list [_ifcList $node_cfg]
+    set interface_names {}
+    foreach iface_id $iface_list {
+       dict set interface_names $iface_id [_getIfcName $node_cfg $iface_id]
+    }
+
+
+    set interface_status {}
+    foreach iface_id $iface_list {
+        set value [_getNodeMplsInterface $node_cfg $iface_id]
+
+        if {$value ne ""} {
+            dict set interface_status $iface_id $value
+        } else {
+            dict set interface_status $iface_id "disabled"
+        }
+
+    }
+
+   
+    foreach iface_id $iface_list {
+        $tree insert "" end -id $iface_id -values [list [dict get $interface_names $iface_id] [dict get $interface_status $iface_id] ]
+    }
+    
+}
+
 proc add_label {ruleTree} {
 
     global label_rule_data
+    global rule_id_list
 
-    set idx [llength [array names label_rule_data]]
+    set idx [newObjectId $rule_id_list "mplsR"]
 
     edit_label_rule_popup $idx $ruleTree
-
+    
 }
 
 proc edit_label_rule_popup {idx ruletree} {
@@ -7950,11 +8034,31 @@ proc edit_label_rule_popup {idx ruletree} {
     ttk::button .edit$idx.container.save -text "Save" -command [list save_rule $idx .edit$idx $ruletree]
     pack .edit$idx.container.save -side left
 
+    
+}
+
+proc update_mpls_rule_tree {tree} {
+
+    global node_cfg
+    global rule_id_list
+
+    $tree delete [$tree children {}]
+    set rule_id_list {}
+    
+    puts [_getNodeMplsRules $node_cfg]
+
+    foreach {id entry} [_getNodeMplsRules $node_cfg] {
+
+        $tree insert "" end -id $id -values $entry
+        lappend rule_id_list $id
+    }
+    
 }
 
 proc save_rule {idx editidx ruleTree} {
     global label_rule_data node_cfg RuleType
-    
+    global rule_id_list
+
     set entry [list \
     [$editidx.container.entry1 get  ]\
     [$editidx.container.entry3 get]\
@@ -7963,23 +8067,74 @@ proc save_rule {idx editidx ruleTree} {
     $RuleType
     ]
 
-    lappend label_rule_data $entry
+    lappend rule_id_list $idx
 
-    $ruleTree insert "" end -values $entry
+    set node_cfg [_addNodeMplsRule $node_cfg $idx $entry]
+
+    update_mpls_rule_tree $ruleTree
+    
+    destroy $editidx
 
 }
 
 proc del_rule {ruleTree} {
+
+    global label_rule_data node_cfg
+    global rule_id_list
 
     set selectedItem [$ruleTree selection]
 
     # Check if an item is actually selected
     if {$selectedItem ne ""} {
         # Delete the selected item
-        $ruleTree delete $selectedItem
+
+        set node_cfg [_removeNodeMplsRule $node_cfg $selectedItem]
+
+        set rule_id_list [lsearch -all -inline -not -exact $rule_id_list $selectedItem]
+        update_mpls_rule_tree $ruleTree
+
         puts "Deleted item: $selectedItem"
     } else {
         puts "No item selected!"
     }
 
+}
+
+proc configGUI_mplsApply {wi node_id} {
+    global node_cfg
+    global mpls_type default_mpls_identifier mpls_label_num
+
+    set node_cfg [_setNodeMplsItem $node_cfg "mpls_type" $mpls_type]
+    set node_cfg [_setNodeMplsItem $node_cfg "default_mpls_identifier" $default_mpls_identifier]
+    set node_cfg [_setNodeMplsItem $node_cfg "mpls_label_num" $mpls_label_num]
+
+
+}
+
+proc _setNodeMplsItem {node_cfg item new_value} {
+  return [_cfgSet $node_cfg "mpls_config" $item $new_value]
+}
+
+proc _getNodeMplsItem {node_cfg item} {
+    return [_cfgGet $node_cfg "mpls_config" $item]
+}
+
+proc _setNodeMplsInterface {node_cfg if state} {
+    return [_cfgSet $node_cfg "mpls_config" "interfaces" $if $state]
+}
+
+proc _getNodeMplsInterface {node_cfg if} {
+    return [_cfgGet $node_cfg "mpls_config" "interfaces" $if]
+}
+
+proc _addNodeMplsRule {node_cfg rule_id rule} {
+    return [_cfgSet $node_cfg "mpls_config" "mpls_rules" $rule_id $rule]
+}
+
+proc _removeNodeMplsRule {node_cfg rule_id} {
+    return [_cfgUnset $node_cfg "mpls_config" "mpls_rules" $rule_id]
+}
+
+proc _getNodeMplsRules {node_cfg} {
+    return [_cfgGet $node_cfg "mpls_config" "mpls_rules"]
 }

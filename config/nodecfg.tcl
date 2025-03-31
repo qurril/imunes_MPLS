@@ -2144,6 +2144,69 @@ proc updateNode { node_id old_node_cfg new_node_cfg } {
 		    }
 		}
 	    }
+		"mpls_config" {
+			set mpls_diff [dictDiff $old_value $new_value]
+			dict for {mpls_key mpls_change} $mpls_diff {
+		    if { $mpls_change == "copy" } {
+			continue
+		    }
+
+		    dputs "======== $mpls_change: '$mpls_key'"
+
+		    set mpls_old_value [_cfgGet $old_value $mpls_key]
+		    set mpls_new_value [_cfgGet $new_value $mpls_key]
+		    if { $mpls_change in "changed" } {
+			dputs "======== OLD: '$mpls_old_value'"
+		    }
+		    if { $mpls_change in "new changed" } {
+			dputs "======== NEW: '$mpls_new_value'"
+		    }
+			switch -exact $mpls_key {
+				"default_mpls_identifier" -
+				"mpls_label_num" -
+				"mpls_type" {
+					setNodeMplsItem $node_id $mpls_key $mpls_new_value
+				}
+				"interfaces" {
+					foreach {if state} $mpls_new_value {
+						setNodeMplsInterface $node_id $if $state
+					}
+				}
+				"mpls_rules" {
+					set mpls_rules_diff [dictDiff $mpls_old_value $mpls_new_value]
+					dict for {mpls_rules_key mpls_rules_change} $mpls_rules_diff {
+						if { $mpls_rules_change == "copy" } {
+							continue
+						}
+
+						dputs "============ $mpls_rules_change: '$mpls_rules_key'"
+
+						set mpls_rules_old_value [_cfgGet $mpls_old_value $mpls_rules_key]
+						set mpls_rules_new_value [_cfgGet $mpls_new_value $mpls_rules_key]
+						if { $mpls_rules_change in "changed" } {
+							dputs "============ OLD: '$mpls_rules_old_value'"
+						}
+						if { $mpls_rules_change in "new changed" } {
+							dputs "============ NEW: '$mpls_rules_new_value'"
+						}
+
+						switch -exact $mpls_rules_change {
+							"removed" {
+								removeNodeMplsRule $node_id $mpls_rules_key
+							}
+							"new" -
+							"changed" {
+								addNodeMplsRule $node_id $mpls_rules_key $mpls_rules_new_value
+							}
+						}
+
+					}
+				}
+
+			}
+
+			}
+		}
 
 	    "ipsec" {
 		set ipsec_diff [dictDiff $old_value $new_value]
@@ -2608,4 +2671,23 @@ proc updateNode { node_id old_node_cfg new_node_cfg } {
     dputs ""
 
     return $new_node_cfg
+}
+
+proc setNodeMplsItem {node_id mpls_key mpls_new_value} {
+	cfgSet "nodes" $node_id "mpls_config" $mpls_key $mpls_new_value
+
+    # TODO: check services
+    trigger_nodeRecreate $node_id
+}
+
+proc setNodeMplsInterface {node_id interface state} {
+	cfgSet "nodes" $node_id "mpls_config" "interfaces" $interface $state
+}
+
+proc addNodeMplsRule {node_id rule_id rule} {
+	cfgSet "nodes" $node_id "mpls_config" "mpls_rules" $rule_id $rule
+}
+
+proc removeNodeMplsRule {node_id rule_id} {
+	cfgUnset "nodes" $node_id "mpls_config" "mpls_rules" $rule_id
 }
