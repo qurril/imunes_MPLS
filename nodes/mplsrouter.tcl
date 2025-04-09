@@ -112,7 +112,7 @@ proc $MODULE.generateConfigIfaces { node_id ifaces } {
     set all_ifaces "[ifcList $node_id] [logIfcList $node_id]"
     if { $ifaces == "*" } {
 	set ifaces $all_ifaces
-    } else {
+    } else { 
 	# sort physical ifaces before logical ones (because of vlans)
 	set negative_ifaces [removeFromList $all_ifaces $ifaces]
 	set ifaces [removeFromList $all_ifaces $negative_ifaces]
@@ -168,7 +168,7 @@ proc $MODULE.generateUnconfigIfaces { node_id ifaces } {
 proc $MODULE.generateConfig { node_id } {
     set cfg {}
     if { [getCustomEnabled $node_id] != true || [getCustomConfigSelected $node_id "NODE_CONFIG"] in "\"\" DISABLED" } {
-	foreach protocol { rip ripng ospf ospf6 bgp } {
+	foreach protocol { rip ripng ospf ospf6 bgp ldp} {
 	    set cfg [concat $cfg [getmplsrouterProtocolCfg $node_id $protocol]]
 	}
     }
@@ -328,7 +328,8 @@ proc $MODULE.nghook { eid node_id iface_id } {
 #   Does nothing
 #****
 proc $MODULE.prepareSystem {} {
-    # nothing to do
+    catch { exec modprobe mpls_router }
+    #catch { exec modprobe mpls_gso }
 }
 
 #****f* mplsrouter.tcl/mplsrouter.nodeCreate
@@ -381,6 +382,8 @@ proc $MODULE.nodeInitConfigure { eid node_id } {
     configureICMPoptions $node_id
     enableIPforwarding $node_id
     startRoutingDaemons $node_id
+    #Dodati ovdje generalni mpls koji netreba interface (labelspace i ldp u vtysh)
+    setMplsLabelSpace $node_id
 }
 
 proc $MODULE.nodePhysIfacesCreate { eid node_id ifaces } {

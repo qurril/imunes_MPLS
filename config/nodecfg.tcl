@@ -2162,12 +2162,12 @@ proc updateNode { node_id old_node_cfg new_node_cfg } {
 			dputs "======== NEW: '$mpls_new_value'"
 		    }
 			switch -exact $mpls_key {
-				"default_mpls_identifier" -
+				"mpls_id" -
 				"mpls_label_num" -
 				"mpls_type" {
 					setNodeMplsItem $node_id $mpls_key $mpls_new_value
 				}
-				"interfaces" {
+				"mpls_ifc" {
 					foreach {if state} $mpls_new_value {
 						setNodeMplsInterface $node_id $if $state
 					}
@@ -2680,14 +2680,248 @@ proc setNodeMplsItem {node_id mpls_key mpls_new_value} {
     trigger_nodeRecreate $node_id
 }
 
+proc getNodeMplsItem {node_id mpls_key} {
+	return [cfgGet "nodes" $node_id "mpls_config" $mpls_key]
+}
+
 proc setNodeMplsInterface {node_id interface state} {
-	cfgSet "nodes" $node_id "mpls_config" "interfaces" $interface $state
+	cfgSet "nodes" $node_id "mpls_config" "mpls_ifc" $interface $state
 }
 
 proc addNodeMplsRule {node_id rule_id rule} {
 	cfgSet "nodes" $node_id "mpls_config" "mpls_rules" $rule_id $rule
 }
-
+	}
 proc removeNodeMplsRule {node_id rule_id} {
 	cfgUnset "nodes" $node_id "mpls_config" "mpls_rules" $rule_id
+}
+
+proc getNodeMplsInterface {node_id} {
+	return [cfgGet "nodes" $node_id "mpls_config" "mpls_ifc"]
+}
+
+
+
+#****f* nodecfg.tcl/getMplsRouterProtocolCfg
+# NAME
+#   getMplsRouterProtocolCfg -- get mplsrouter protocol configuration
+# SYNOPSIS
+#   getMplsRouterProtocolCfg $node_id $protocol
+# FUNCTION
+#   Returns the mplsrouter protocol configuration.
+# INPUTS
+#   * node_id -- node id
+#   * protocol -- router protocol
+#****
+proc getmplsrouterProtocolCfg { node_id protocol } {
+    setToRunning "${node_id}_old_$protocol" [getNodeProtocol $node_id $protocol]
+    if { [getNodeProtocol $node_id $protocol] == 0 } {
+	return ""
+    }
+
+    set cfg {}
+
+    set model [getNodeModel $node_id]
+    switch -exact -- $model {
+	"quagga" -
+	"frr" {
+	    lappend cfg "vtysh << __EOF__"
+	    lappend cfg "conf term"
+
+	    set router_id [ip::intToString [expr 1 + [string trimleft $node_id "n"]]]
+	    switch -exact -- $protocol {
+		"rip" {
+		    lappend cfg "router rip"
+		    lappend cfg " redistribute static"
+		    lappend cfg " redistribute connected"
+		    lappend cfg " redistribute ospf"
+		    lappend cfg " network 0.0.0.0/0"
+		    lappend cfg "!"
+		}
+		"ripng" {
+		    lappend cfg "router ripng"
+		    lappend cfg " redistribute static"
+		    lappend cfg " redistribute connected"
+		    lappend cfg " redistribute ospf6"
+		    lappend cfg " network ::/0"
+		    lappend cfg "!"
+		}
+		"ospf" {
+		    lappend cfg "router ospf"
+		    lappend cfg " ospf router-id $router_id"
+		    lappend cfg " redistribute static"
+		    lappend cfg " redistribute connected"
+		    lappend cfg " redistribute rip"
+		    lappend cfg "!"
+		}
+		"ospf6" {
+		    if { $model == "quagga" } {
+			set id_string "router-id $router_id"
+			#set area_string "network ::/0 area 0.0.0.0"
+		    } else {
+			set id_string "ospf6 router-id $router_id"
+			#set area_string "area 0.0.0.0 range ::/0"
+		    }
+
+		    lappend cfg "router ospf6"
+		    lappend cfg " $id_string"
+		    lappend cfg " redistribute static"
+		    lappend cfg " redistribute connected"
+		    lappend cfg " redistribute ripng"
+
+		    if { $model == "quagga" } {
+			foreach iface_id [ifcList $node_id] {
+			    lappend cfg " interface $iface_id area 0.0.0.0"
+			}
+		    }
+
+		    lappend cfg "!"
+		}
+		"bgp" {
+		    set loopback_ipv4 [lindex [split [getIfcIPv4addrs $node_id "lo0" ] "/"] 0]
+		    lappend cfg "router bgp 1000"
+		    lappend cfg " bgp router-id $loopback_ipv4"
+		    lappend cfg " no bgp ebgp-requires-policy"
+		    lappend cfg " neighbor DEFAULT peer-group"
+		    lappend cfg " neighbor DEFAULT remote-as 1000"
+		    lappend cfg " neighbor DEFAULT update-source $loopback_ipv4"
+		    lappend cfg " redistribute static"
+		    lappend cfg " redistribute connected"
+		    lappend cfg "!"
+		}
+		"ldp" {
+			set loopback_ipv4 [lindex [split [getIfcIPv4addrs $node_id "lo0" ] "/"] 0] 
+			lappend cfg "mpls ldp"
+			lappend cfg " router-id $loopback_ipv4"
+			lappend cfg " address-family ipv4"
+			lappend cfg " discovery transport-address $loopback_ipv4"
+			foreach ifc [getNodeMplsInterface $node_id] {
+				set ifc_name [getIfcName $node_id $ifc]
+				lappend cfg "  interface $ifc_name"
+				lappend cfg "  exit"
+				lappend cfg "  !"
+			}
+			lappend cfg " exit-address-family"
+			lappend cfg " !"
+			lappend cfg "!"
+		}
+	    }
+
+	    lappend cfg "__EOF__"
+	}
+	"static" {
+	    # nothing to return
+	}
+    }
+
+    return $cfg
+}
+
+proc getmplsrouterProtocolUnconfig { node_id protocol } {
+    if { [getFromRunning "${node_id}_old_$protocol"] == 0 } {
+	return ""
+    }
+
+    set cfg {}
+
+    set model [getNodeModel $node_id]
+    switch -exact -- $model {
+	"quagga" -
+	"frr" {
+	    lappend cfg "vtysh << __EOF__"
+	    lappend cfg "conf term"
+
+	    set router_id [ip::intToString [expr 1 + [string trimleft $node_id "n"]]]
+	    switch -exact -- $protocol {
+		"rip" {
+		    lappend cfg "no router rip"
+		}
+		"ripng" {
+		    lappend cfg "no router ripng"
+		}
+		"ospf" {
+		    lappend cfg "no router ospf"
+		}
+		"ospf6" {
+		    lappend cfg "no router ospf6"
+
+		    if { $model == "quagga" } {
+			foreach iface [ifcList $node_id] {
+			    lappend cfg " no interface $iface area 0.0.0.0"
+			}
+		    }
+
+		    lappend cfg "!"
+		}
+		"bgp" {
+		    lappend cfg "no router bgp 1000"
+		}
+		"ldp" {
+			lappend cfg "no router ldp"
+		}	
+	    }
+
+	    lappend cfg "__EOF__"
+	}
+	"static" {
+	    # nothing to return
+	}
+    }
+
+    return $cfg
+}
+
+proc mplsrouterRoutesCfggen { node_id } {
+    set cfg {}
+
+    set model [getNodeModel $node_id]
+    switch -exact -- $model {
+	"quagga" -
+	"frr" {
+	    if { [getCustomEnabled $node_id] != true } {
+		set routes4 [nodeCfggenStaticRoutes4 $node_id 1]
+		set routes6 [nodeCfggenStaticRoutes6 $node_id 1]
+
+		if { $routes4 != "" || $routes6 != "" } {
+		    lappend cfg "vtysh << __EOF__"
+		    lappend cfg "conf term"
+
+		    set cfg [concat $cfg $routes4]
+		    set cfg [concat $cfg $routes6]
+
+		    lappend cfg "!"
+		    lappend cfg "__EOF__"
+		}
+	    }
+
+	    set routes4 [nodeCfggenAutoRoutes4 $node_id 1]
+	    set routes6 [nodeCfggenAutoRoutes6 $node_id 1]
+
+	    if { $routes4 != "" || $routes6 != "" } {
+		lappend cfg "vtysh << __EOF__"
+		lappend cfg "conf term"
+
+		set cfg [concat $cfg $routes4]
+		set cfg [concat $cfg $routes6]
+
+		lappend cfg "!"
+		lappend cfg "__EOF__"
+	    }
+	}
+	"static" {
+	    if { [getCustomEnabled $node_id] != true } {
+		set cfg [concat $cfg [nodeCfggenStaticRoutes4 $node_id]]
+		set cfg [concat $cfg [nodeCfggenStaticRoutes6 $node_id]]
+
+		lappend cfg ""
+	    }
+
+	    set cfg [concat $cfg [nodeCfggenAutoRoutes4 $node_id]]
+	    set cfg [concat $cfg [nodeCfggenAutoRoutes6 $node_id]]
+
+	    lappend cfg ""
+	}
+    }
+
+    return $cfg
 }

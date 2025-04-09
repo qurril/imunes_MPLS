@@ -7772,6 +7772,10 @@ proc configGUI_mpls {tab node_id} {
     set section1 [ttk::frame $tab.section1]
     pack $section1 -fill x -pady 10
 
+    set section1.top [ttk::frame $tab.section1.top]
+    set section1.bottom [ttk::frame $tab.section1.bottom]
+    pack $section1.top -side top
+    pack $section1.bottom -side bottom
     #Label input
     
     global default_mpls_identifier
@@ -7781,9 +7785,9 @@ proc configGUI_mpls {tab node_id} {
         set default_mpls_identifier 1.1.1.1
     }
 
-    ttk::label $section1.label -text "Identifier:"
-    ttk::entry $section1.idEntry -textvariable default_mpls_identifier
-    pack $section1.label $section1.idEntry -side left -padx 5
+    ttk::label $section1.top.label -text "Identifier:"
+    ttk::entry $section1.top.idEntry -textvariable default_mpls_identifier
+    pack $section1.top.label $section1.top.idEntry -side left -padx 5
 
     #Max label setup
 
@@ -7794,9 +7798,9 @@ proc configGUI_mpls {tab node_id} {
         set mpls_label_num 1024
     }
 
-    ttk::label $section1.label_number -text "Number_of_labels:"
-    ttk::entry $section1.mpls_labelsEntry -textvariable mpls_label_num
-    pack $section1.label_number $section1.mpls_labelsEntry -side left -padx 5
+    ttk::label $section1.top.label_number -text "Number_of_labels:"
+    ttk::entry $section1.top.mpls_labelsEntry -textvariable mpls_label_num
+    pack $section1.top.label_number $section1.top.mpls_labelsEntry -side left -padx 5
 
     #MPLS type selection
     global mpls_type
@@ -7806,10 +7810,10 @@ proc configGUI_mpls {tab node_id} {
         set mpls_type LDP
     }
     
-    ttk::label $section1.typeLabel1 -text "MPLS Type:"
-    ttk::radiobutton $section1.ldp -text "LDP" -variable mpls_type -value "LDP"
-    ttk::radiobutton $section1.static -text "Static" -variable mpls_type -value "Static"
-    pack $section1.typeLabel1 $section1.ldp $section1.static -side left -padx 5
+    ttk::label $section1.bottom.typeLabel1 -text "MPLS Type:"
+    ttk::radiobutton $section1.bottom.ldp -text "LDP" -variable mpls_type -value "LDP"
+    ttk::radiobutton $section1.bottom.static -text "Static" -variable mpls_type -value "Static"
+    pack $section1.bottom.typeLabel1 $section1.bottom.ldp $section1.bottom.static -side left -padx 5
 
     
 
@@ -8105,9 +8109,16 @@ proc configGUI_mplsApply {wi node_id} {
     global mpls_type default_mpls_identifier mpls_label_num
 
     set node_cfg [_setNodeMplsItem $node_cfg "mpls_type" $mpls_type]
-    set node_cfg [_setNodeMplsItem $node_cfg "default_mpls_identifier" $default_mpls_identifier]
+    set node_cfg [_setNodeMplsItem $node_cfg "mpls_id" $default_mpls_identifier]
     set node_cfg [_setNodeMplsItem $node_cfg "mpls_label_num" $mpls_label_num]
 
+
+    if { $mpls_type != "Static" } {
+        setNodeProtocol $node_id "ldp" 1
+    } else {
+        setNodeProtocol $node_id "ldp" 0
+    }
+    
 
 }
 
@@ -8120,11 +8131,11 @@ proc _getNodeMplsItem {node_cfg item} {
 }
 
 proc _setNodeMplsInterface {node_cfg if state} {
-    return [_cfgSet $node_cfg "mpls_config" "interfaces" $if $state]
+    return [_cfgSet $node_cfg "mpls_config" "mpls_ifc" $if $state]
 }
 
 proc _getNodeMplsInterface {node_cfg if} {
-    return [_cfgGet $node_cfg "mpls_config" "interfaces" $if]
+    return [_cfgGet $node_cfg "mpls_config" "mpls_ifc" $if]
 }
 
 proc _addNodeMplsRule {node_cfg rule_id rule} {

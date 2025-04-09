@@ -1711,7 +1711,7 @@ proc getJsonType { key_name } {
 	return "dictionary"
     } elseif { $key_name in "croutes4 croutes6 ipv4_addrs ipv6_addrs services events tayga_mappings custom_commands" } {
 	return "array"
-    } elseif { $key_name in "mpls_config vlan ipsec nat64 packgen packets" } {
+    } elseif { $key_name in "mpls_rules mpls_config vlan ipsec nat64 packgen packets" } {
 	return "inner_dictionary"
     }
 

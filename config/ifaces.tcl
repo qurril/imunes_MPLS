@@ -1019,6 +1019,24 @@ proc nodeCfggenIfcIPv6 { node_id iface_id } {
     return $cfg
 }
 
+#****f* nodecfg.tcl/getIfcMplsState
+# NAME
+#   getIfcMplsState -- get state of mpls config for node
+# SYNOPSIS
+#   getIfcMplsState $node_id $iface_id
+# FUNCTION
+#   Get if mpls is turned on or off for specific interface
+# INPUTS
+#   * node_id -- node of interface
+#   * iface_id -- interface to of which to get state of mpls
+# RESULT
+#   * value -- returns enabled or disabled signifying state of mpls
+#              for that interface
+#****
+proc getIfcMplsState {node_id iface_id} {
+    return [cfgGet nodes $node_id "mpls_config" "mpls_ifc" $iface_id]
+}
+
 #****f* nodecfg.tcl/newIface
 # NAME
 #   newIface -- new interface
@@ -1286,6 +1304,100 @@ proc routerCfggenIfc { node_id iface_id } {
     return $cfg
 }
 
+proc mplsrouterCfggenIfc { node_id iface_id } {
+    set ospf_enabled [getNodeProtocol $node_id "ospf"]
+    set ospf6_enabled [getNodeProtocol $node_id "ospf6"]
+
+    set cfg {}
+
+    set model [getNodeModel $node_id]
+    set iface_name [getIfcName $node_id $iface_id]
+    if { $iface_name == "lo0" } {
+	set model "static"
+    }
+
+    switch -exact -- $model {
+	"quagga" -
+	"frr" {
+	    set mac_addr [getIfcMACaddr $node_id $iface_id]
+	    if { $mac_addr != "" } {
+		lappend cfg [getMacIfcCmd $iface_name $mac_addr]
+	    }
+
+	    set mtu [getIfcMTU $node_id $iface_id]
+	    lappend cfg [getMtuIfcCmd $iface_name $mtu]
+
+	    if { [getIfcNatState $node_id $iface_id] == "on" } {
+		lappend cfg [getNatIfcCmd $iface_name]
+	    }
+
+        set mpls_state [getIfcMplsState $node_id $iface_id]
+        setToRunning "${node_id}|${iface_id}_old_mpls_state" $mpls_state
+        if {$mpls_state == "enabled"} {
+            lappend cfg "sysctl net.mpls.conf.${iface_name}.input=1"
+        }
+        
+
+	    lappend cfg "vtysh << __EOF__"
+	    lappend cfg "conf term"
+	    lappend cfg "interface $iface_name"
+
+        
+        if {$mpls_state == "enabled"} {
+            lappend cfg "mpls enable"
+        }
+
+	    set addrs4 [getIfcIPv4addrs $node_id $iface_id]
+	    setToRunning "${node_id}|${iface_id}_old_ipv4_addrs" $addrs4
+	    if { $addrs4 != "dhcp" } {
+		foreach addr $addrs4 {
+		    if { $addr != "" } {
+			lappend cfg " ip address $addr"
+		    }
+		}
+	    }
+
+	    if { $ospf_enabled } {
+		if { ! [isIfcLogical $node_id $iface_id] } {
+		    lappend cfg " ip ospf area 0.0.0.0"
+		}
+	    }
+
+	    set addrs6 [getIfcIPv6addrs $node_id $iface_id]
+	    setToRunning "${node_id}|${iface_id}_old_ipv6_addrs" $addrs6
+	    foreach addr $addrs6 {
+		if { $addr != "" } {
+		    lappend cfg " ipv6 address $addr"
+		}
+	    }
+
+	    if { $model == "frr" && $ospf6_enabled } {
+		if { ! [isIfcLogical $node_id $iface_id] } {
+		    lappend cfg " ipv6 ospf6 area 0.0.0.0"
+		}
+	    }
+
+	    if { [getIfcOperState $node_id $iface_id] == "down" } {
+		lappend cfg " shutdown"
+	    } else {
+		lappend cfg " no shutdown"
+	    }
+
+	    lappend cfg "!"
+	    lappend cfg "__EOF__"
+
+	    if { $addrs4 == "dhcp" } {
+		lappend cfg "[getIPv4IfcCmd $iface_name $addrs4 1]"
+	    }
+	}
+	"static" {
+	    set cfg [concat $cfg [nodeCfggenIfc $node_id $iface_id]]
+	}
+    }
+
+    return $cfg
+}
+
 proc routerUncfggenIfc { node_id iface_id } {
     set ospf_enabled [getNodeProtocol $node_id "ospf"]
     set ospf6_enabled [getNodeProtocol $node_id "ospf6"]
@@ -1313,6 +1425,75 @@ proc routerUncfggenIfc { node_id iface_id } {
 		    }
 		}
 	    }
+
+	    if { $ospf_enabled } {
+		if { ! [isIfcLogical $node_id $iface_id] } {
+		    lappend cfg " no ip ospf area 0.0.0.0"
+		}
+	    }
+
+	    set addrs6 [getFromRunning "${node_id}|${iface_id}_old_ipv6_addrs"]
+	    foreach addr $addrs6 {
+		if { $addr != "" } {
+		    lappend cfg " no ipv6 address $addr"
+		}
+	    }
+
+	    if { $model == "frr" && $ospf6_enabled } {
+		if { ! [isIfcLogical $node_id $iface_id] } {
+		    lappend cfg " no ipv6 ospf6 area 0.0.0.0"
+		}
+	    }
+
+	    lappend cfg " shutdown"
+
+	    lappend cfg "!"
+	    lappend cfg "__EOF__"
+
+	    if { $addrs4 == "dhcp" } {
+		lappend cfg "[getDelIPv4IfcCmd $iface_name $addrs4]"
+	    }
+	}
+	"static" {
+	    set cfg [concat $cfg [nodeUncfggenIfc $node_id $iface_id]]
+	}
+    }
+
+    return $cfg
+}
+
+proc mplsrouterUncfggenIfc { node_id iface_id } {
+    set ospf_enabled [getNodeProtocol $node_id "ospf"]
+    set ospf6_enabled [getNodeProtocol $node_id "ospf6"]
+
+    set cfg {}
+
+    set model [getNodeModel $node_id]
+    set iface_name [getIfcName $node_id $iface_id]
+    if { $iface_name == "lo0" } {
+	set model "static"
+    }
+
+    switch -exact -- $model {
+	"quagga" -
+	"frr" {
+	    lappend cfg "vtysh << __EOF__"
+	    lappend cfg "conf term"
+	    lappend cfg "interface $iface_name"
+
+	    set addrs4 [getFromRunning "${node_id}|${iface_id}_old_ipv4_addrs"]
+	    if { $addrs4 != "dhcp" } {
+		foreach addr $addrs4 {
+		    if { $addr != "" } {
+			lappend cfg " no ip address $addr"
+		    }
+		}
+	    }
+
+        set mpls_state [getFromRunning "${node_id}|${iface_id}_old_mpls_state"]
+        if {$mpls_state == "enabled"} {
+            lappend cfg "no mpls enable"
+        }
 
 	    if { $ospf_enabled } {
 		if { ! [isIfcLogical $node_id $iface_id] } {

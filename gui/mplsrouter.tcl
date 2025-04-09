@@ -137,6 +137,12 @@ proc $MODULE.notebookDimensions { wi } {
 	set w 507
     }
 
+    if { [string trimleft [$wi.nbook select] "$wi.nbook.nf"] \
+	== "MPLS" } {
+	set h 400
+	set w 600
+    }
+
     return [list $h $w]
 }
 
