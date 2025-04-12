@@ -2209,7 +2209,7 @@ proc startRoutingDaemons { node_id } {
     pipesExec "docker exec -d [getFromRunning "eid"].$node_id sh -c '$cmds'" "hold"
 }
 
-proc setMplsLabelSpace {$node_id} {
-    set cmds "sysctl sys.net.mpls.platform_labels=$getNodeMplsItem"
+proc setMplsLabelSpace { node_id} {
+    set cmds "sysctl sys.net.mpls.platform_labels=[getNodeMplsItem $node_id "mpls_label_num"]"
     pipesExec "docker exec -d [getFromRunning "eid"].$node_id sh -c '$cmds'" "hold"
 }

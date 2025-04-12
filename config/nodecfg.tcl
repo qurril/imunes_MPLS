@@ -2691,7 +2691,7 @@ proc setNodeMplsInterface {node_id interface state} {
 proc addNodeMplsRule {node_id rule_id rule} {
 	cfgSet "nodes" $node_id "mpls_config" "mpls_rules" $rule_id $rule
 }
-	}
+	
 proc removeNodeMplsRule {node_id rule_id} {
 	cfgUnset "nodes" $node_id "mpls_config" "mpls_rules" $rule_id
 }
@@ -2790,9 +2790,10 @@ proc getmplsrouterProtocolCfg { node_id protocol } {
 		    lappend cfg "!"
 		}
 		"ldp" {
-			set loopback_ipv4 [lindex [split [getIfcIPv4addrs $node_id "lo0" ] "/"] 0] 
+			set loopback_ipv4 [getNodeMplsItem $node_id "mpls_id"]
 			lappend cfg "mpls ldp"
 			lappend cfg " router-id $loopback_ipv4"
+			
 			lappend cfg " address-family ipv4"
 			lappend cfg " discovery transport-address $loopback_ipv4"
 			foreach ifc [getNodeMplsInterface $node_id] {
@@ -2918,6 +2919,51 @@ proc mplsrouterRoutesCfggen { node_id } {
 
 	    set cfg [concat $cfg [nodeCfggenAutoRoutes4 $node_id]]
 	    set cfg [concat $cfg [nodeCfggenAutoRoutes6 $node_id]]
+
+	    lappend cfg ""
+	}
+    }
+
+    return $cfg
+}
+
+proc mplsrouterRoutesUncfggen { node_id } {
+    set cfg {}
+
+    set model [getNodeModel $node_id]
+    switch -exact -- $model {
+	"quagga" -
+	"frr" {
+	    if { [getCustomEnabled $node_id] != true } {
+		lappend cfg "vtysh << __EOF__"
+		lappend cfg "conf term"
+
+		set cfg [concat $cfg [nodeUncfggenStaticRoutes4 $node_id 1]]
+		set cfg [concat $cfg [nodeUncfggenStaticRoutes6 $node_id 1]]
+
+		lappend cfg "!"
+		lappend cfg "__EOF__"
+	    }
+
+	    lappend cfg "vtysh << __EOF__"
+	    lappend cfg "conf term"
+
+	    set cfg [concat $cfg [nodeUncfggenAutoRoutes4 $node_id 1]]
+	    set cfg [concat $cfg [nodeUncfggenAutoRoutes6 $node_id 1]]
+
+	    lappend cfg "!"
+	    lappend cfg "__EOF__"
+	}
+	"static" {
+	    if { [getCustomEnabled $node_id] != true } {
+		set cfg [concat $cfg [nodeUncfggenStaticRoutes4 $node_id]]
+		set cfg [concat $cfg [nodeUncfggenStaticRoutes6 $node_id]]
+
+		lappend cfg ""
+	    }
+
+	    set cfg [concat $cfg [nodeUncfggenAutoRoutes4 $node_id]]
+	    set cfg [concat $cfg [nodeUncfggenAutoRoutes6 $node_id]]
 
 	    lappend cfg ""
 	}
