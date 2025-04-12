@@ -2691,6 +2691,10 @@ proc setNodeMplsInterface {node_id interface state} {
 proc addNodeMplsRule {node_id rule_id rule} {
 	cfgSet "nodes" $node_id "mpls_config" "mpls_rules" $rule_id $rule
 }
+
+proc getNodeMplsRulesDict {node_id} {
+	return [cfgGet "nodes" $node_id "mpls_config" "mpls_rules"]
+}
 	
 proc removeNodeMplsRule {node_id rule_id} {
 	cfgUnset "nodes" $node_id "mpls_config" "mpls_rules" $rule_id
@@ -2879,6 +2883,24 @@ proc mplsrouterRoutesCfggen { node_id } {
     switch -exact -- $model {
 	"quagga" -
 	"frr" {
+		dict for {ruleId rule} [getNodeMplsRulesDict $node_id] {
+			lassign $rule id outLab action exitIf primBp
+
+			set metric 100
+
+			if {$primBp == "Backup"} {
+		    set metric 200
+			}
+
+			if {$action == "Set"} {
+				lappend cfg "ip route add $id encap mpls $outLab dev $exitIf metric $metric"
+			} elseif {$action == "Forward"} {
+				lappend cfg "ip -f mpls route add $id as $outLab dev $exitIf metric $metric"
+			} else {
+				lappend cfg "ip -f mpls route add $id dev lo0"
+			}	
+		}
+
 	    if { [getCustomEnabled $node_id] != true } {
 		set routes4 [nodeCfggenStaticRoutes4 $node_id 1]
 		set routes6 [nodeCfggenStaticRoutes6 $node_id 1]
@@ -2910,6 +2932,25 @@ proc mplsrouterRoutesCfggen { node_id } {
 	    }
 	}
 	"static" {
+
+		dict for {ruleId rule} [getNodeMplsRulesDict $node_id] {
+			lassign $rule id outLab action exitIf primBp
+
+			set metric 100
+
+			if {primBp == "Backup"} {
+		    set metric 200
+			}
+
+			if {action == "Set"} {
+				lappend cfg "ip route add $id encap mpls $outLab via $exitIf metric $metric"
+			}elseif {action == "Forward"} {
+				lappend cfg "ip -f mpls route add $id as $outLab via $exitIf metric $metric"
+			}else {
+				lappend cfg "ip -f mpls route add $id dev lo"
+			}	
+		}
+
 	    if { [getCustomEnabled $node_id] != true } {
 		set cfg [concat $cfg [nodeCfggenStaticRoutes4 $node_id]]
 		set cfg [concat $cfg [nodeCfggenStaticRoutes6 $node_id]]
