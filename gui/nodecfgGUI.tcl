@@ -8024,14 +8024,15 @@ proc edit_label_rule_popup {idx ruletree} {
     ttk::combobox .edit$idx.container.dropdown0 -values {"Pop" "Forward" "Set"} -state readonly
     pack .edit$idx.container.label2 .edit$idx.container.dropdown0 -side left
 
-    ttk::label .edit$idx.container.labelIFace -text "Interface:"
-    ttk::combobox .edit$idx.container.dropdownIface -values $interface_names -state readonly -textvariable selectedInterface
-    pack .edit$idx.container.labelIFace .edit$idx.container.dropdownIface -side left
 
-    ttk::label .edit$idx.container.labelType -text "Type"
-    ttk::radiobutton .edit$idx.container.typeMain -text "Main" -variable RuleType -value "Main"
-    ttk::radiobutton .edit$idx.container.typeBackup -text "Backup" -variable RuleType -value "Backup"
-    pack .edit$idx.container.labelType .edit$idx.container.typeMain .edit$idx.container.typeBackup -side bottom
+    ttk::label .edit$idx.container.labelIFace -text "Gateway:"
+    ttk::entry .edit$idx.container.gatwayBox
+     pack .edit$idx.container.labelIFace .edit$idx.container.gatwayBox -side left
+
+   # ttk::label .edit$idx.container.labelType -text "Type"
+   # ttk::radiobutton .edit$idx.container.typeMain -text "Main" -variable RuleType -value "Main"
+   # ttk::radiobutton .edit$idx.container.typeBackup -text "Backup" -variable RuleType -value "Backup"
+   # pack .edit$idx.container.labelType .edit$idx.container.typeMain .edit$idx.container.typeBackup -side bottom
 
     set RuleType "Main"
 
@@ -8067,7 +8068,7 @@ proc save_rule {idx editidx ruleTree} {
     [$editidx.container.entry1 get  ]\
     [$editidx.container.entry3 get]\
     [$editidx.container.dropdown0 get]\
-    [$editidx.container.dropdownIface get]\
+    [$editidx.container.gatwayBox get]\
     $RuleType
     ]
 
