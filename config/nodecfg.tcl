@@ -2886,24 +2886,31 @@ proc mplsrouterRoutesCfggen { node_id } {
 
 		setToRunning "${node_id}_old_rules" [getNodeMplsRulesDict $node_id]
 
+		set mplsRoutes {}
 		dict for {ruleId rule} [getNodeMplsRulesDict $node_id] {
-			lassign $rule id outLab action exitIf primBp
+			lassign $rule id outLab action gateway primBp
 			
 
 			set metric 100
 
-			if {$primBp == "Backup"} {
-		    set metric 200
-			}
+			#if {$primBp == "Backup"} {
+		    #set metric 200
+			#}
 
 			if {$action == "Set"} {
-				lappend cfg "ip route add $id encap mpls $outLab dev $exitIf metric $metric"
+				lappend cfg "ip route add $id encap mpls $outLab dev $gateway"
 			} elseif {$action == "Forward"} {
-				lappend cfg "ip -f mpls route add $id as $outLab dev $exitIf metric $metric"
+				lappend mplsRoutes "mpls lsp $id $gateway $outLab"
 			} else {
-				lappend cfg "ip -f mpls route add $id dev lo0"
+				lappend mplsRoutes "mpls lsp $id $gateway implicit-null"
 			}	
 		}
+
+		lappend cfg "vtysh << __EOF__"
+		lappend cfg "conf term"
+		set cfg [concat $cfg $mplsRoutes]
+		lappend cfg "!"
+		lappend cfg "__EOF__"
 
 	    if { [getCustomEnabled $node_id] != true } {
 		set routes4 [nodeCfggenStaticRoutes4 $node_id 1]
@@ -2939,18 +2946,18 @@ proc mplsrouterRoutesCfggen { node_id } {
 
 		setToRunning "${node_id}_old_rules" [getNodeMplsRulesDict $node_id]
 		dict for {ruleId rule} [getNodeMplsRulesDict $node_id] {
-			lassign $rule id outLab action exitIf primBp
+			lassign $rule id outLab action gateway primBp
 
 			set metric 100
 
-			if {primBp == "Backup"} {
-		    set metric 200
-			}
+			#if {primBp == "Backup"} {
+		    #set metric 200
+			#}
 
 			if {action == "Set"} {
-				lappend cfg "ip route add $id encap mpls $outLab via $exitIf metric $metric"
+				lappend cfg "ip route add $id encap mpls $outLab via inet $gateway"
 			}elseif {action == "Forward"} {
-				lappend cfg "ip -f mpls route add $id as $outLab via $exitIf metric $metric"
+				lappend cfg "ip -f mpls route add $id as $outLab via inet $gateway"
 			}else {
 				lappend cfg "ip -f mpls route add $id dev lo"
 			}	
@@ -2987,23 +2994,25 @@ proc mplsrouterRoutesUncfggen { node_id } {
 			
 			if {[dict exists $newRules $ruleId] || $rule ne [dict get $newRules $ruleId]} {
 
-				lassign $rule id outLab action exitIf primBp
+				lassign $rule id outLab action gateway primBp
 
 				set metric 100
 
-				if {primBp == "Backup"} {
-				set metric 200
-				}
+				#if {primBp == "Backup"} {
+				#set metric 200
+				#}
 
-				if {action == "Set"} {
-					lappend cfg "ip route del $id encap mpls $outLab via $exitIf metric $metric"
-				}elseif {action == "Forward"} {
-					lappend cfg "ip -f mpls route del $id as $outLab via $exitIf metric $metric"
-				}else {
-					lappend cfg "ip -f mpls route del $id dev lo"
-				}
+				if {$action == "Set"} {
+					lappend cfg "ip route del $id encap mpls $outLab via inet $gateway"
+				} elseif {$action == "Forward"} {
+					lappend mplsRoutes "no mpls lsp $id $gateway $outLab"
+				} else {
+					lappend mplsRoutes "no mpls lsp $id $gateway implicit-null"
+				}	
 			}
 		}
+
+		
 
 	    if { [getCustomEnabled $node_id] != true } {
 		lappend cfg "vtysh << __EOF__"
@@ -3033,18 +3042,18 @@ proc mplsrouterRoutesUncfggen { node_id } {
 		dict for {ruleId rule} $oldRules {
 			if {[dict exists $newRules $ruleId] || $rule ne [dict get $newRules $ruleId]} {
 
-				lassign $rule id outLab action exitIf primBp
+				lassign $rule id outLab action gateways primBp
 
 				set metric 100
 
-				if {primBp == "Backup"} {
-				set metric 200
-				}
+				#if {primBp == "Backup"} {
+				#set metric 200
+				#}
 
 				if {action == "Set"} {
-					lappend cfg "ip route del $id encap mpls $outLab via $exitIf metric $metric"
+					lappend cfg "ip route del $id encap mpls $outLab via inet $gateway"
 				}elseif {action == "Forward"} {
-					lappend cfg "ip -f mpls route del $id as $outLab via $exitIf metric $metric"
+					lappend cfg "ip -f mpls route del $id as $outLab via inet $gateways"
 				}else {
 					lappend cfg "ip -f mpls route del $id dev lo"
 				}
