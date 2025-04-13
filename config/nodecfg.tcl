@@ -2883,8 +2883,12 @@ proc mplsrouterRoutesCfggen { node_id } {
     switch -exact -- $model {
 	"quagga" -
 	"frr" {
+
+		setToRunning "${node_id}_old_rules" [getNodeMplsRulesDict $node_id]
+
 		dict for {ruleId rule} [getNodeMplsRulesDict $node_id] {
 			lassign $rule id outLab action exitIf primBp
+			
 
 			set metric 100
 
@@ -2933,6 +2937,7 @@ proc mplsrouterRoutesCfggen { node_id } {
 	}
 	"static" {
 
+		setToRunning "${node_id}_old_rules" [getNodeMplsRulesDict $node_id]
 		dict for {ruleId rule} [getNodeMplsRulesDict $node_id] {
 			lassign $rule id outLab action exitIf primBp
 
@@ -2975,6 +2980,22 @@ proc mplsrouterRoutesUncfggen { node_id } {
     switch -exact -- $model {
 	"quagga" -
 	"frr" {
+		set oldRules [getFromRunning "${node_id}_old_rules"]
+		set newRules [getNodeMplsRulesDict $node_id]
+		
+		dict for {ruleId rule} $oldRules {
+			set tmpRule [dict get $newRules $ruleId]
+			if {$rule ne $tmpRule}{
+				if {action == "Set"} {
+					lappend cfg "ip route del $id encap mpls $outLab via $exitIf metric $metric"
+				}elseif {action == "Forward"} {
+					lappend cfg "ip -f mpls route del $id as $outLab via $exitIf metric $metric"
+				}else {
+					lappend cfg "ip -f mpls route del $id dev lo"
+				}
+			}
+		}
+
 	    if { [getCustomEnabled $node_id] != true } {
 		lappend cfg "vtysh << __EOF__"
 		lappend cfg "conf term"
@@ -2996,6 +3017,23 @@ proc mplsrouterRoutesUncfggen { node_id } {
 	    lappend cfg "__EOF__"
 	}
 	"static" {
+
+		set oldRules [getFromRunning "${node_id}_old_rules"]
+		set newRules [getNodeMplsRulesDict $node_id]
+		
+		dict for {ruleId rule} $oldRules {
+			set tmpRule [dict get $newRules $ruleId]
+			if {$rule ne $tmpRule}{
+				if {action == "Set"} {
+					lappend cfg "ip route del $id encap mpls $outLab via $exitIf metric $metric"
+				}elseif {action == "Forward"} {
+					lappend cfg "ip -f mpls route del $id as $outLab via $exitIf metric $metric"
+				}else {
+					lappend cfg "ip -f mpls route del $id dev lo"
+				}
+			}
+		}
+
 	    if { [getCustomEnabled $node_id] != true } {
 		set cfg [concat $cfg [nodeUncfggenStaticRoutes4 $node_id]]
 		set cfg [concat $cfg [nodeUncfggenStaticRoutes6 $node_id]]
