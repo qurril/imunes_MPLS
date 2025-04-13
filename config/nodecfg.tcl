@@ -2984,8 +2984,17 @@ proc mplsrouterRoutesUncfggen { node_id } {
 		set newRules [getNodeMplsRulesDict $node_id]
 		
 		dict for {ruleId rule} $oldRules {
-			set tmpRule [dict get $newRules $ruleId]
-			if {$rule ne $tmpRule}{
+			
+			if {[dict exists $newRules $ruleId] || $rule ne [dict get $newRules $ruleId]} {
+
+				lassign $rule id outLab action exitIf primBp
+
+				set metric 100
+
+				if {primBp == "Backup"} {
+				set metric 200
+				}
+
 				if {action == "Set"} {
 					lappend cfg "ip route del $id encap mpls $outLab via $exitIf metric $metric"
 				}elseif {action == "Forward"} {
@@ -3022,8 +3031,16 @@ proc mplsrouterRoutesUncfggen { node_id } {
 		set newRules [getNodeMplsRulesDict $node_id]
 		
 		dict for {ruleId rule} $oldRules {
-			set tmpRule [dict get $newRules $ruleId]
-			if {$rule ne $tmpRule}{
+			if {[dict exists $newRules $ruleId] || $rule ne [dict get $newRules $ruleId]} {
+
+				lassign $rule id outLab action exitIf primBp
+
+				set metric 100
+
+				if {primBp == "Backup"} {
+				set metric 200
+				}
+
 				if {action == "Set"} {
 					lappend cfg "ip route del $id encap mpls $outLab via $exitIf metric $metric"
 				}elseif {action == "Forward"} {
