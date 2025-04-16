@@ -7897,7 +7897,7 @@ proc configGUI_mpls {tab node_id} {
     set buttonFrameRules [ttk::frame $rules.buttons]
     pack $buttonFrameRules -side bottom -pady 5
 
-    ttk::button $buttonFrameRules.add -text "Add Rule" -command "add_label $ruleTree"
+    ttk::button $buttonFrameRules.add -text "Add Rule" -command "add_label $ruleTree $node_id"
     ttk::button $buttonFrameRules.remove -text "Remove Rule" -command "del_rule $ruleTree"
     pack $buttonFrameRules.add $buttonFrameRules.remove -side right -pady 5 -expand 1
 
@@ -7965,18 +7965,18 @@ proc updateMplsIfTree {tree} {
     
 }
 
-proc add_label {ruleTree} {
+proc add_label {ruleTree node_id} {
 
     global label_rule_data
     global rule_id_list
 
     set idx [newObjectId $rule_id_list "mplsR"]
 
-    edit_label_rule_popup $idx $ruleTree
+    edit_label_rule_popup $idx $ruleTree $node_id
     
 }
 
-proc edit_label_rule_popup {idx ruletree} {
+proc edit_label_rule_popup {idx ruletree node_id} {
 
     global label_rule_data node_cfg
 
@@ -7994,14 +7994,11 @@ proc edit_label_rule_popup {idx ruletree} {
     }
     set all_iface_list [concat $iface_list $logiface_list]
 
-    set interface_names {}
-    foreach iface_id $all_iface_list {
-        lappend interface_names [_getIfcName $node_cfg $iface_id]
-    }
+    set gateways [get_neighbor_IP $node_id]
     
     global RuleType "Main"
 
-    set selectedInterface ""
+    set selectedGateway ""
 
     tk::toplevel .edit$idx
 
@@ -8021,12 +8018,12 @@ proc edit_label_rule_popup {idx ruletree} {
     pack .edit$idx.container.label3 .edit$idx.container.entry3 -side left
 
     ttk::label .edit$idx.container.label2 -text "Operation:"
-    ttk::combobox .edit$idx.container.dropdown0 -values {"Pop" "Forward" "Set"} -state readonly
-    pack .edit$idx.container.label2 .edit$idx.container.dropdown0 -side left
+    ttk::combobox .edit$idx.container.actionDropdown -values {"Pop" "Forward" "Set"} -state readonly
+    pack .edit$idx.container.label2 .edit$idx.container.actionDropdown -side left
 
 
     ttk::label .edit$idx.container.labelIFace -text "Gateway:"
-    ttk::entry .edit$idx.container.gatwayBox
+    ttk::combobox .edit$idx.container.gatwayBox -values $gateways -state readonly -textvariable selectedGateway 
      pack .edit$idx.container.labelIFace .edit$idx.container.gatwayBox -side left
 
    # ttk::label .edit$idx.container.labelType -text "Type"
@@ -8062,12 +8059,59 @@ proc update_mpls_rule_tree {tree} {
 
 proc save_rule {idx editidx ruleTree} {
     global label_rule_data node_cfg RuleType
-    global rule_id_list
+    global rule_id_list mpls_label_num
+
+    switch [$editidx.container.actionDropdown get] {
+        "Pop" {
+            #Check if label is given correctly
+            if {![regexp {\d+} [$editidx.container.entry1 get] match]} {
+                tk_messageBox -message "Pop operation expects a label as Identifier!" -icon error -type ok -title "Error"
+                return
+            } elseif {[expr [$editidx.container.entry1 get]] >= $mpls_label_num } {
+                tk_messageBox -message "Label must be smaller than max label ($mpls_label_num)" -icon error -type ok -title "Error"
+                return
+            }
+        }
+        "Forward" {
+            #Check if incoming label is given correctly
+            if {![regexp {\d+} [$editidx.container.entry1 get] match]} {
+                tk_messageBox -message "Forward operation expects an label as Identifier!" -icon error -type ok -title "Error"
+                return
+            } elseif {[expr [$editidx.container.entry1 get]] >= $mpls_label_num } {
+                tk_messageBox -message "Label must be smaller than max label ($mpls_label_num)" -icon error -type ok -title "Error"
+                return
+            }
+            #Check if outgoing label is given correctly
+            if {![regexp {\d+} [$editidx.container.entry3 get] match]} {
+                tk_messageBox -message "Forward operation expects a label in output!" -icon error -type ok -title "Error"
+                return
+            } elseif {[expr [$editidx.container.entry3 get]] >= $mpls_label_num } {
+                tk_messageBox -message "Label must be smaller than max label ($mpls_label_num)" -icon error -type ok -title "Error"
+                return
+            }
+        }
+        "Set" {
+            #Check if destination ip is given correctly
+            if {![regexp {\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}} [$editidx.container.entry1 get] match]} {
+                tk_messageBox -message "Pop operation expects a destination ip as Identifier!" -icon error -type ok -title "Error"
+                return
+            }
+            #Check if outgoing label is given correctly
+            if {![regexp {\d+} [$editidx.container.entry3 get] match]} {
+                tk_messageBox -message "Set operation expects a label in output!" -icon error -type ok -title "Error"
+                return
+            } elseif {[expr [$editidx.container.entry3 get]] >= $mpls_label_num } {
+                tk_messageBox -message "Label must be smaller than max label ($mpls_label_num)" -icon error -type ok -title "Error"
+                return
+            }
+        }
+
+    }
 
     set entry [list \
     [$editidx.container.entry1 get  ]\
     [$editidx.container.entry3 get]\
-    [$editidx.container.dropdown0 get]\
+    [$editidx.container.actionDropdown get]\
     [$editidx.container.gatwayBox get]\
     $RuleType
     ]
@@ -8121,6 +8165,47 @@ proc configGUI_mplsApply {wi node_id} {
     }
     
 
+}
+
+
+#****f* nodecfgGUI.tcl/get_neighbor_IP
+# NAME
+#   get_neighbor_IP -- gets IPs of neighbors
+# SYNOPSIS
+#   get_neighbor_IP $node_id
+# FUNCTION
+#   Returns a list of ip addreses of directly connected neighboring interfaces
+# INPUTS
+#   * node_id -- node id
+#****
+
+proc get_neighbor_IP {node_id} {
+    set gateways {}
+    lappend gateways "0.0.0.0"
+    set linkDict [cfgGet "links"]
+
+    
+
+    dict for  {linkID link} [cfgGet "links"] {
+        lassign [dict get $link "peers"] peer1 peer2
+        lassign [dict get $link "peers_ifaces"] if1 if2
+       # puts "$peer1 $peer2"
+       # puts "$if1 $if2"
+
+        if { $peer1 eq $node_id} {
+            
+            set tmpIP ""
+            regexp {^[^/]+} [cfgGet "nodes" $peer2 "ifaces" $if2 "ipv4_addrs"] tmpIP
+            lappend gateways $tmpIP
+            
+        } elseif {$peer2 eq $node_id} {
+            set tmpIP ""
+            regexp {^[^/]+} [cfgGet "nodes" $peer1 "ifaces" $if1 "ipv4_addrs"] tmpIP
+           lappend gateways $tmpIP
+           
+        }
+    }
+    return $gateways
 }
 
 proc _setNodeMplsItem {node_cfg item new_value} {
