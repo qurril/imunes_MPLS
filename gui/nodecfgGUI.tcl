@@ -7994,11 +7994,16 @@ proc edit_label_rule_popup {idx ruletree node_id} {
     }
     set all_iface_list [concat $iface_list $logiface_list]
 
-    set gateways [get_neighbor_IP $node_id]
+    
+    set mplsRuleGateways ""
     
     global RuleType "Main"
 
+    global selectedAction
+    set selectedAction ""
     set selectedGateway ""
+
+    
 
     tk::toplevel .edit$idx
 
@@ -8018,13 +8023,16 @@ proc edit_label_rule_popup {idx ruletree node_id} {
     pack .edit$idx.container.label3 .edit$idx.container.entry3 -side left
 
     ttk::label .edit$idx.container.label2 -text "Operation:"
-    ttk::combobox .edit$idx.container.actionDropdown -values {"Pop" "Forward" "Set"} -state readonly
+    ttk::combobox .edit$idx.container.actionDropdown -values {"Pop" "Forward" "Set"} -state readonly -textvariable selectedAction
     pack .edit$idx.container.label2 .edit$idx.container.actionDropdown -side left
 
 
     ttk::label .edit$idx.container.labelIFace -text "Gateway:"
-    ttk::combobox .edit$idx.container.gatwayBox -values $gateways -state readonly -textvariable selectedGateway 
-     pack .edit$idx.container.labelIFace .edit$idx.container.gatwayBox -side left
+    ttk::combobox .edit$idx.container.gatwayBox -values $mplsRuleGateways -state readonly -textvariable selectedGateway 
+    pack .edit$idx.container.labelIFace .edit$idx.container.gatwayBox -side left    
+
+
+    bind .edit$idx.container.actionDropdown  <<ComboboxSelected>> [list configGUI_onActionSelected $node_id .edit$idx.container.gatwayBox]
 
    # ttk::label .edit$idx.container.labelType -text "Type"
    # ttk::radiobutton .edit$idx.container.typeMain -text "Main" -variable RuleType -value "Main"
@@ -8047,7 +8055,7 @@ proc update_mpls_rule_tree {tree} {
     $tree delete [$tree children {}]
     set rule_id_list {}
     
-    puts [_getNodeMplsRules $node_cfg]
+    #puts [_getNodeMplsRules $node_cfg]
 
     foreach {id entry} [_getNodeMplsRules $node_cfg] {
 
@@ -8070,6 +8078,9 @@ proc save_rule {idx editidx ruleTree} {
             } elseif {[expr [$editidx.container.entry1 get]] >= $mpls_label_num } {
                 tk_messageBox -message "Label must be smaller than max label ($mpls_label_num)" -icon error -type ok -title "Error"
                 return
+            }
+            if {[$editidx.container.gatwayBox get] ne "0.0.0.0"} {
+                tk_messageBox -message "For Pop action gateway has to be 0.0.0.0" -icon error -type ok -title "Error"
             }
         }
         "Forward" {
@@ -8167,6 +8178,32 @@ proc configGUI_mplsApply {wi node_id} {
 
 }
 
+#****f* nodecfgGUI.tcl/configGUI_onActionSelected
+# NAME
+#   configGUI_onActionSelected -- gets IPs of neighbors
+# SYNOPSIS
+#   configGUI_onActionSelected $node_id
+# FUNCTION
+#   Triggers when type of action for a new rule is selected modifying the dropdown
+#   menu for gateway depending on the selected action
+# INPUTS
+#   * node_id -- node id
+#****
+proc configGUI_onActionSelected {node_id gatewaysBox} {
+    global selectedAction
+
+    switch $selectedAction {
+        "Pop" {
+            $gatewaysBox configure -values {"0.0.0.0"}
+        }
+        "Set" -
+        "Forward" {
+            $gatewaysBox configure -values  [get_neighbor_IP $node_id]
+        }
+        
+    }
+}
+
 
 #****f* nodecfgGUI.tcl/get_neighbor_IP
 # NAME
@@ -8183,8 +8220,6 @@ proc get_neighbor_IP {node_id} {
     set gateways {}
     lappend gateways "0.0.0.0"
     set linkDict [cfgGet "links"]
-
-    
 
     dict for  {linkID link} [cfgGet "links"] {
         lassign [dict get $link "peers"] peer1 peer2
