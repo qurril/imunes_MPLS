@@ -3012,6 +3012,11 @@ proc mplsrouterRoutesUncfggen { node_id } {
 			}
 		}
 
+		lappend cfg "vtysh << __EOF__"
+		lappend cfg "conf term"
+		set cfg [concat $cfg $mplsRoutes]
+		lappend cfg "!"
+		lappend cfg "__EOF__"
 		
 
 	    if { [getCustomEnabled $node_id] != true } {

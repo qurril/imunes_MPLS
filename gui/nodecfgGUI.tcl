@@ -8018,9 +8018,12 @@ proc edit_label_rule_popup {idx ruletree node_id} {
     ttk::entry .edit$idx.container.entry1 -width 10
     pack .edit$idx.container.label1 .edit$idx.container.entry1 -side left
 
+    ttk::style configure entryStyle.TEntry
+    ttk::style map entryStyle.TEntry -fieldbackground { disabled #d9d9d9 }
+
     ttk::label .edit$idx.container.label3 -text "Out Label:"
-    ttk::entry .edit$idx.container.entry3 -width 10
-    pack .edit$idx.container.label3 .edit$idx.container.entry3 -side left
+    ttk::entry .edit$idx.container.entry3 -width 10 -style entryStyle.TEntry
+    pack .edit$idx.container.label3 .edit$idx.container.entry3 -side left 
 
     ttk::label .edit$idx.container.label2 -text "Operation:"
     ttk::combobox .edit$idx.container.actionDropdown -values {"Pop" "Forward" "Set"} -state readonly -textvariable selectedAction
@@ -8032,7 +8035,7 @@ proc edit_label_rule_popup {idx ruletree node_id} {
     pack .edit$idx.container.labelIFace .edit$idx.container.gatwayBox -side left    
 
 
-    bind .edit$idx.container.actionDropdown  <<ComboboxSelected>> [list configGUI_onActionSelected $node_id .edit$idx.container.gatwayBox]
+    bind .edit$idx.container.actionDropdown  <<ComboboxSelected>> [list configGUI_onActionSelected $node_id .edit$idx.container]
 
    # ttk::label .edit$idx.container.labelType -text "Type"
    # ttk::radiobutton .edit$idx.container.typeMain -text "Main" -variable RuleType -value "Main"
@@ -8119,6 +8122,10 @@ proc save_rule {idx editidx ruleTree} {
 
     }
 
+    dict for {ruleId rule} [] {
+
+    }
+
     set entry [list \
     [$editidx.container.entry1 get  ]\
     [$editidx.container.entry3 get]\
@@ -8189,16 +8196,21 @@ proc configGUI_mplsApply {wi node_id} {
 # INPUTS
 #   * node_id -- node id
 #****
-proc configGUI_onActionSelected {node_id gatewaysBox} {
+proc configGUI_onActionSelected {node_id wi} {
     global selectedAction
 
     switch $selectedAction {
         "Pop" {
-            $gatewaysBox configure -values {"0.0.0.0"}
+            $wi.gatwayBox configure -values {"0.0.0.0"}
+            $wi.entry3 configure -state disabled
         }
-        "Set" -
+        "Set" {
+            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 1]
+            $wi.entry3 configure -state enabled
+        }
         "Forward" {
-            $gatewaysBox configure -values  [get_neighbor_IP $node_id]
+            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 0]
+            $wi.entry3 configure -state enabled
         }
         
     }
@@ -8216,7 +8228,7 @@ proc configGUI_onActionSelected {node_id gatewaysBox} {
 #   * node_id -- node id
 #****
 
-proc get_neighbor_IP {node_id} {
+proc get_neighbor_IP {node_id full} {
     set gateways {}
     lappend gateways "0.0.0.0"
     set linkDict [cfgGet "links"]
@@ -8230,12 +8242,16 @@ proc get_neighbor_IP {node_id} {
         if { $peer1 eq $node_id} {
             
             set tmpIP ""
+            if {$full} {
             regexp {^[^/]+} [cfgGet "nodes" $peer2 "ifaces" $if2 "ipv4_addrs"] tmpIP
+            }
             lappend gateways $tmpIP
             
         } elseif {$peer2 eq $node_id} {
             set tmpIP ""
+            if {$full} {
             regexp {^[^/]+} [cfgGet "nodes" $peer1 "ifaces" $if1 "ipv4_addrs"] tmpIP
+            }
            lappend gateways $tmpIP
            
         }
