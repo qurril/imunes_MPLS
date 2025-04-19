@@ -41,7 +41,7 @@ proc genExperimentId {} {
     global isOSlinux
 
     if { $isOSlinux } {
-        return i[string range [format %04x [expr {[pid] + [expr { round( rand()*10000 ) }]}]] 0 2]
+        return i[string range [format %04x [expr {[pid] + [expr { round( rand()*10000 ) }]}]] end-2 end]
     } else {
         return i[format %04x [expr {[pid] + [expr { round( rand()*10000 ) }]}]]
     }
@@ -679,7 +679,7 @@ proc deployCfg { { execute 0 } } {
 }
 
 proc execute_prepareSystem {} {
-    global eid_base
+    global eid_base isOSlinux
     global execMode
 
     if { [getFromRunning "cfg_deployed"] } {
@@ -688,17 +688,26 @@ proc execute_prepareSystem {} {
 
     set running_eids [getResumableExperiments]
     if { $execMode != "batch" } {
+	if { $isOSlinux } {
+	    set eid_base [string range $eid_base 0 3]
+	}
+
 	set eid ${eid_base}[string range $::curcfg 3 end]
 	while { $eid in $running_eids } {
 	    set eid_base [genExperimentId]
 	    set eid ${eid_base}[string range $::curcfg 3 end]
 	}
     } else {
+	if { $isOSlinux } {
+	    set eid_base [string range $eid_base 0 4]
+	}
+
 	set eid $eid_base
 	while { $eid in $running_eids } {
 	    puts -nonewline stderr "Experiment ID $eid already in use, trying "
 	    set eid [genExperimentId]
 	    puts stderr "$eid."
+	    set running_eids [getResumableExperiments]
 	}
     }
 
@@ -754,10 +763,15 @@ proc waitForInstantiateNodes { nodes nodes_count w } {
 
     set batchStep 0
     set nodes_left $nodes
+    # ignore first run when checking for timeout
+    set old_nodes_left -1
     while { [llength $nodes_left] > 0 } {
 	displayBatchProgress $batchStep $nodes_count
 	foreach node_id $nodes_left {
 	    if { ! [isNodeStarted $node_id] } {
+		if { $nodecreate_timeout < 0 } {
+		    after [expr -$nodecreate_timeout]
+		}
 		continue
 	    }
 
@@ -775,13 +789,22 @@ proc waitForInstantiateNodes { nodes nodes_count w } {
 	    displayBatchProgress $batchStep $nodes_count
 
 	    set nodes_left [removeFromList $nodes_left $node_id]
+	}
 
+	if { $old_nodes_left != [llength $nodes_left] } {
+	    set old_nodes_left [llength $nodes_left]
 	    set t_start [clock milliseconds]
+
+	    continue
 	}
 
 	set t_last [clock milliseconds]
+	if { $nodecreate_timeout < 0 } {
+	    continue
+	}
+
 	if { [llength $nodes_left] > 0 && [expr {($t_last - $t_start)/1000.0}] > $nodecreate_timeout } {
-	    set skip_nodes $nodes_left
+	    lappend skip_nodes {*}$nodes_left
 	    break
 	}
     }
@@ -908,10 +931,15 @@ proc waitForInitConf { nodes nodes_count w } {
 
     set batchStep 0
     set nodes_left $nodes
+    # ignore first run when checking for timeout
+    set old_nodes_left -1
     while { [llength $nodes_left] > 0 } {
 	displayBatchProgress $batchStep $nodes_count
 	foreach node_id $nodes_left {
 	    if { ! [isNodeInitNet $node_id] } {
+		if { $nodecreate_timeout < 0 } {
+		    after [expr -$nodecreate_timeout]
+		}
 		continue
 	    }
 
@@ -927,13 +955,22 @@ proc waitForInitConf { nodes nodes_count w } {
 	    displayBatchProgress $batchStep $nodes_count
 
 	    set nodes_left [removeFromList $nodes_left $node_id]
+	}
 
+	if { $old_nodes_left != [llength $nodes_left] } {
+	    set old_nodes_left [llength $nodes_left]
 	    set t_start [clock milliseconds]
+
+	    continue
 	}
 
 	set t_last [clock milliseconds]
+	if { $nodecreate_timeout < 0 } {
+	    continue
+	}
+
 	if { [llength $nodes_left] > 0 && [expr {($t_last - $t_start)/1000.0}] > $nodecreate_timeout } {
-	    set skip_nodes $nodes_left
+	    lappend skip_nodes {*}$nodes_left
 	    break
 	}
     }
@@ -1188,10 +1225,15 @@ proc configureIfacesWait { nodes_ifaces nodes_count w } {
 
     set batchStep 0
     set nodes_left $nodes
+    # ignore first run when checking for timeout
+    set old_nodes_left -1
     while { [llength $nodes_left] > 0 } {
 	displayBatchProgress $batchStep $nodes_count
 	foreach node_id $nodes_left {
 	    if { ! [isNodeIfacesConfigured $node_id] } {
+		if { $ifacesconf_timeout < 0 } {
+		    after [expr -$ifacesconf_timeout]
+		}
 		continue
 	    }
 
@@ -1207,11 +1249,20 @@ proc configureIfacesWait { nodes_ifaces nodes_count w } {
 	    displayBatchProgress $batchStep $nodes_count
 
 	    set nodes_left [removeFromList $nodes_left $node_id]
+	}
 
+	if { $old_nodes_left != [llength $nodes_left] } {
+	    set old_nodes_left [llength $nodes_left]
 	    set t_start [clock milliseconds]
+
+	    continue
 	}
 
 	set t_last [clock milliseconds]
+	if { $ifacesconf_timeout < 0 } {
+	    continue
+	}
+
 	if { [llength $nodes_left] > 0 && [expr {($t_last - $t_start)/1000.0}] > $ifacesconf_timeout } {
 	    set err_skip_nodesifaces $nodes_left
 	    break
@@ -1330,10 +1381,15 @@ proc waitForConfStart { nodes nodes_count w } {
 
     set batchStep 0
     set nodes_left $nodes
+    # ignore first run when checking for timeout
+    set old_nodes_left -1
     while { [llength $nodes_left] > 0 } {
 	displayBatchProgress $batchStep $nodes_count
 	foreach node_id $nodes_left {
 	    if { ! [isNodeConfigured $node_id] } {
+		if { $nodeconf_timeout < 0 } {
+		    after [expr -$nodeconf_timeout]
+		}
 		continue
 	    }
 
@@ -1349,11 +1405,20 @@ proc waitForConfStart { nodes nodes_count w } {
 	    displayBatchProgress $batchStep $nodes_count
 
 	    set nodes_left [removeFromList $nodes_left $node_id]
+	}
 
+	if { $old_nodes_left != [llength $nodes_left] } {
+	    set old_nodes_left [llength $nodes_left]
 	    set t_start [clock milliseconds]
+
+	    continue
 	}
 
 	set t_last [clock milliseconds]
+	if { $nodeconf_timeout < 0 } {
+	    continue
+	}
+
 	if { [llength $nodes_left] > 0 && [expr {($t_last - $t_start)/1000.0}] > $nodeconf_timeout } {
 	    set err_skip_nodes $nodes_left
 	    break

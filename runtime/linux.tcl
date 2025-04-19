@@ -1,7 +1,7 @@
 global VROOT_MASTER ULIMIT_FILE ULIMIT_PROC
 set VROOT_MASTER "imunes/template"
 set ULIMIT_FILE "1024:16384"
-set ULIMIT_PROC "1024:2048"
+set ULIMIT_PROC "1024:16384"
 
 #****f* linux.tcl/l2node.nodeCreate
 # NAME
@@ -547,6 +547,7 @@ proc prepareFilesystemForNode { node_id } {
 #****
 proc createNodeContainer { node_id } {
     global VROOT_MASTER ULIMIT_FILE ULIMIT_PROC
+    global nodecreate_timeout
 
     set docker_id "[getFromRunning "eid"].$node_id"
 
@@ -560,13 +561,28 @@ proc createNodeContainer { node_id } {
         set vroot $VROOT_MASTER
     }
 
+    if { $ULIMIT_FILE != "" } {
+	set ulimit_file_str "--ulimit nofile=$ULIMIT_FILE"
+    } else {
+	set ulimit_file_str ""
+    }
+
+    if { $ULIMIT_PROC != "" } {
+	set ulimit_proc_str "--ulimit nproc=$ULIMIT_PROC"
+    } else {
+	set ulimit_proc_str ""
+    }
+
     set docker_cmd "docker run --detach --init --tty \
 	--privileged --cap-add=ALL --net=$network \
 	--name $docker_id --hostname=[getNodeName $node_id] \
 	--volume /tmp/.X11-unix:/tmp/.X11-unix \
 	--sysctl net.ipv6.conf.all.disable_ipv6=0 \
-	--ulimit nofile=$ULIMIT_FILE --ulimit nproc=$ULIMIT_PROC \
-	$vroot &"
+	$ulimit_file_str $ulimit_proc_str $vroot"
+
+    if { $nodecreate_timeout >= 0 } {
+	set docker_cmd "$docker_cmd &"
+    }
 
     dputs "Node $node_id -> '$docker_cmd'"
 
@@ -574,6 +590,8 @@ proc createNodeContainer { node_id } {
 }
 
 proc isNodeStarted { node_id } {
+    global nodecreate_timeout
+
     set node_type [getNodeType $node_id]
     if { [$node_type.virtlayer] != "VIRTUALIZED" } {
 	if { $node_type in "rj45 ext extnat" } {
@@ -593,7 +611,11 @@ proc isNodeStarted { node_id } {
 
     set docker_id "[getFromRunning "eid"].$node_id"
 
-    catch { exec docker inspect --format '{{.State.Running}}' $docker_id } status
+    if { $nodecreate_timeout >= 0 } {
+	catch { exec timeout [expr $nodecreate_timeout/5.0] docker inspect --format '{{.State.Running}}' $docker_id } status
+    } else {
+	catch { exec docker inspect --format '{{.State.Running}}' $docker_id } status
+    }
 
     return [string match 'true' $status]
 }
@@ -795,7 +817,7 @@ proc configureICMPoptions { node_id } {
 }
 
 proc isNodeInitNet { node_id } {
-    global skip_nodes
+    global skip_nodes nodecreate_timeout
 
     if { $node_id in $skip_nodes } {
 	return true
@@ -804,12 +826,10 @@ proc isNodeInitNet { node_id } {
     set docker_id "[getFromRunning "eid"].$node_id"
 
     try {
-	exec docker inspect -f "{{.GraphDriver.Data.MergedDir}}" $docker_id
-    } on ok mergedir {
-	try {
-	    exec test -f ${mergedir}/tmp/init
-	} on error {} {
-	    return false
+	if { $nodecreate_timeout >= 0 } {
+	    exec timeout [expr $nodecreate_timeout/5.0] docker exec $docker_id rm /tmp/init >/dev/null
+	} else {
+	    exec docker exec $docker_id rm /tmp/init >/dev/null
 	}
     } on error {} {
 	return false
@@ -1137,7 +1157,7 @@ proc unconfigNodeIfaces { eid node_id ifaces } {
 }
 
 proc isNodeIfacesConfigured { node_id } {
-    global skip_nodes
+    global skip_nodes ifacesconf_timeout
 
     if { $node_id in $skip_nodes } {
 	return true
@@ -1150,25 +1170,20 @@ proc isNodeIfacesConfigured { node_id } {
     }
 
     try {
-	# docker exec sometimes hangs, so don't use it while we have other pipes opened
-	exec docker inspect -f "{{.GraphDriver.Data.MergedDir}}" $docker_id
-    } on ok mergedir {
-	catch { exec test ! -f ${mergedir}/tout_ifaces.log } err1
-	catch { exec test -f ${mergedir}/out_ifaces.log } err2
-	if { $err1 == "" && $err2 == "" } {
-	    return true
+	if { $ifacesconf_timeout >= 0 } {
+	    exec timeout [expr $ifacesconf_timeout/5.0] docker exec -t $docker_id sh -c "test ! -f /tout_ifaces.log && test -f /out_ifaces.log"
+	} else {
+	    exec docker exec -t $docker_id sh -c "test ! -f /tout_ifaces.log && test -f /out_ifaces.log"
 	}
-
+    } on error {} {
 	return false
-    } on error err {
-	puts stderr "Error on docker inspect: '$err'"
     }
 
-    return false
+    return true
 }
 
 proc isNodeConfigured { node_id } {
-    global skip_nodes
+    global skip_nodes nodeconf_timeout
 
     if { $node_id in $skip_nodes } {
 	return true
@@ -1181,25 +1196,20 @@ proc isNodeConfigured { node_id } {
     }
 
     try {
-	# docker exec sometimes hangs, so don't use it while we have other pipes opened
-	exec docker inspect -f "{{.GraphDriver.Data.MergedDir}}" $docker_id
-    } on ok mergedir {
-	catch { exec test ! -f ${mergedir}/tout.log } err1
-	catch { exec test -f ${mergedir}/out.log } err2
-	if { $err1 == "" && $err2 == "" } {
-	    return true
+	if { $nodeconf_timeout >= 0 } {
+	    exec timeout [expr $nodeconf_timeout/5.0] docker exec -t $docker_id sh -c "test ! -f /tout.log && test -f /out.log"
+	} else {
+	    exec docker exec -t $docker_id sh -c "test ! -f /tout.log && test -f /out.log"
 	}
-
+    } on error {} {
 	return false
-    } on error err {
-	puts stderr "Error on docker inspect: '$err'"
     }
 
-    return false
+    return true
 }
 
 proc isNodeError { node_id } {
-    global skip_nodes
+    global skip_nodes nodeconf_timeout
 
     if { $node_id in $skip_nodes } {
 	return false
@@ -1212,28 +1222,24 @@ proc isNodeError { node_id } {
     set docker_id "[getFromRunning "eid"].$node_id"
 
     try {
-	# docker exec sometimes hangs, so don't use it while we have other pipes opened
-	exec docker inspect -f "{{.GraphDriver.Data.MergedDir}}" $docker_id
-    } on ok mergedir {
-	if { ! [file exists ${mergedir}/err.log] } {
-	    return ""
+	if { $nodeconf_timeout >= 0 } {
+	    exec timeout [expr $nodeconf_timeout/5.0] docker exec -t $docker_id sed "/^+ /d" /err.log
+	} else {
+	    exec docker exec -t $docker_id sed "/^+ /d" /err.log
 	}
-
-	catch { exec sed "/^+ /d" ${mergedir}/err.log } errlog
+    } on error {} {
+	return ""
+    } on ok errlog {
 	if { $errlog == "" } {
 	    return false
 	}
 
 	return true
-    } on error err {
-	puts stderr "Error on docker inspect: '$err'"
     }
-
-    return true
 }
 
 proc isNodeErrorIfaces { node_id } {
-    global skip_nodes
+    global skip_nodes ifacesconf_timeout
 
     if { $node_id in $skip_nodes } {
 	return false
@@ -1246,24 +1252,20 @@ proc isNodeErrorIfaces { node_id } {
     set docker_id "[getFromRunning "eid"].$node_id"
 
     try {
-	# docker exec sometimes hangs, so don't use it while we have other pipes opened
-	exec docker inspect -f "{{.GraphDriver.Data.MergedDir}}" $docker_id
-    } on ok mergedir {
-	if { ! [file exists ${mergedir}/err_ifaces.log] } {
-	    return ""
+	if { $ifacesconf_timeout >= 0 } {
+	    exec timeout [expr $ifacesconf_timeout/5.0] docker exec -t $docker_id sed "/^+ /d" /err_ifaces.log
+	} else {
+	    exec docker exec -t $docker_id sed "/^+ /d" /err_ifaces.log
 	}
-
-	catch { exec sed "/^+ /d" ${mergedir}/err_ifaces.log } errlog
+    } on error {} {
+	return ""
+    } on ok errlog {
 	if { $errlog == "" } {
 	    return false
 	}
 
 	return true
-    } on error err {
-	puts stderr "Error on docker inspect: '$err'"
     }
-
-    return true
 }
 
 proc removeNetns { netns } {
