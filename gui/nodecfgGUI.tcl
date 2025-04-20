@@ -8084,9 +8084,7 @@ proc save_rule {idx editidx ruleTree} {
                 tk_messageBox -message "Label must be smaller than max label ($mpls_label_num)" -icon error -type ok -title "Error"
                 return
             }
-            if {[$editidx.container.gatwayBox get] ne "0.0.0.0"} {
-                tk_messageBox -message "For Pop action gateway has to be 0.0.0.0" -icon error -type ok -title "Error"
-            }
+            
         }
         "Forward" {
             #Check if incoming label is given correctly
@@ -8203,15 +8201,15 @@ proc configGUI_onActionSelected {node_id wi} {
 
     switch $selectedAction {
         "Pop" {
-            $wi.gatwayBox configure -values {"0.0.0.0"}
+            $wi.gatwayBox configure -values [get_neighbor_IP $node_id 0]
             $wi.entry3 configure -state disabled
         }
         "Set" {
-            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 1]
+            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 0]
             $wi.entry3 configure -state enabled
         }
         "Forward" {
-            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 0]
+            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 1]
             $wi.entry3 configure -state enabled
         }
         
@@ -8232,28 +8230,33 @@ proc configGUI_onActionSelected {node_id wi} {
 
 proc get_neighbor_IP {node_id full} {
     set gateways {}
-    lappend gateways "0.0.0.0"
     set linkDict [cfgGet "links"]
 
+    dputs "===== Getting links with node $node_id ====="
     dict for  {linkID link} [cfgGet "links"] {
         lassign [dict get $link "peers"] peer1 peer2
         lassign [dict get $link "peers_ifaces"] if1 if2
-       # puts "$peer1 $peer2"
-       # puts "$if1 $if2"
+        dputs "$peer1 $peer2"
+        dputs "$if1 $if2"
+        
 
         if { $peer1 eq $node_id} {
             
             set tmpIP ""
-            if {$full} {
+            #if {$full} {
             regexp {^[^/]+} [cfgGet "nodes" $peer2 "ifaces" $if2 "ipv4_addrs"] tmpIP
-            }
+           # } else {
+            #    set tmpIP [cfgGet "nodes" $peer2 "ifaces" $if2 "ipv4_addrs"]
+            #}
             lappend gateways $tmpIP
             
         } elseif {$peer2 eq $node_id} {
             set tmpIP ""
-            if {$full} {
+            #if {$full} {
             regexp {^[^/]+} [cfgGet "nodes" $peer1 "ifaces" $if1 "ipv4_addrs"] tmpIP
-            }
+           # } else {
+            #    set tmpIP [cfgGet "nodes" $peer2 "ifaces" $if2 "ipv4_addrs"]
+           # }
            lappend gateways $tmpIP
            
         }

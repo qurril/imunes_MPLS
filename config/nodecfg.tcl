@@ -2898,7 +2898,7 @@ proc mplsrouterRoutesCfggen { node_id } {
 			#}
 
 			if {$action == "Set"} {
-				lappend cfg "ip route add $id encap mpls $outLab dev $gateway"
+				lappend cfg "ip route add $id encap mpls $outLab via inet $gateway"
 			} elseif {$action == "Forward"} {
 				lappend mplsRoutes "mpls lsp $id $gateway $outLab"
 			} else {
@@ -2989,6 +2989,7 @@ proc mplsrouterRoutesUncfggen { node_id } {
 	"frr" {
 		set oldRules [getFromRunning "${node_id}_old_rules"]
 		set newRules [getNodeMplsRulesDict $node_id]
+		set mplsRoutes {}
 		
 		dict for {ruleId rule} $oldRules {
 			
