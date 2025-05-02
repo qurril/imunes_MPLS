@@ -1358,7 +1358,7 @@ proc mplsrouterCfggenIfc { node_id iface_id } {
 	    }
 
 	    if { $ospf_enabled } {
-		if { ! [isIfcLogical $node_id $iface_id] } {
+		if { ! [isIfcLogical $node_id $iface_id] || [getIfcName $node_id $iface_id] == "lo1"} {
 		    lappend cfg " ip ospf area 0.0.0.0"
 		}
 	    }

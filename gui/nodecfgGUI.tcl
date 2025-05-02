@@ -7781,7 +7781,7 @@ proc configGUI_mpls {tab node_id} {
     #Label input
     
     global default_mpls_identifier
-    set default_mpls_identifier [_getNodeMplsItem $node_cfg "default_mpls_identifier"]
+    set default_mpls_identifier [_getNodeMplsItem $node_cfg "mpls_id"]
 
     if {$default_mpls_identifier == ""} {
         set default_mpls_identifier 1.1.1.1

@@ -83,6 +83,10 @@ proc $MODULE.confNewNode { node_id } {
     set logiface_id [newLogIface $node_id "lo"]
     setIfcIPv4addrs $node_id $logiface_id "127.0.0.1/8"
     setIfcIPv6addrs $node_id $logiface_id "::1/128"
+
+    set ldp_iface [newLogIface $node_id "lo"]
+    setIfcIPv4addrs $node_id $ldp_iface "1.1.1.1/32"
+
 }
 
 #****f* mplsrouter.tcl/mplsrouter.confNewIfc

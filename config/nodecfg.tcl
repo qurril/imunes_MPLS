@@ -488,7 +488,7 @@ proc getSubnetData { this_node_id this_iface_id subnet_gws nodes_l2data subnet_i
 
     set this_type [getNodeType $this_node_id]
     if { [$this_type.netlayer] == "NETWORK" } {
-	if { $this_type in "router nat64 extnat" } {
+	if { $this_type in "mplsrouter router nat64 extnat" } {
 	    # this node is a router/extnat, add our IP addresses to lists
 	    # TODO: multiple addresses per iface - split subnet4data and subnet6data
 	    set gw4 [lindex [split [getIfcIPv4addrs $this_node_id $this_iface_id] /] 0]
@@ -2752,7 +2752,7 @@ proc getmplsrouterProtocolCfg { node_id protocol } {
 		}
 		"ospf" {
 		    lappend cfg "router ospf"
-		    lappend cfg " ospf router-id $router_id"
+		    lappend cfg " ospf router-id [getNodeMplsItem $node_id "mpls_id"]"
 		    lappend cfg " redistribute static"
 		    lappend cfg " redistribute connected"
 		    lappend cfg " redistribute rip"
@@ -2800,11 +2800,13 @@ proc getmplsrouterProtocolCfg { node_id protocol } {
 			
 			lappend cfg " address-family ipv4"
 			lappend cfg " discovery transport-address $loopback_ipv4"
-			foreach ifc [getNodeMplsInterface $node_id] {
+			dict for {ifc state} [getNodeMplsInterface $node_id] {
+				if {$state == "enabled"} {
 				set ifc_name [getIfcName $node_id $ifc]
 				lappend cfg "  interface $ifc_name"
 				lappend cfg "  exit"
 				lappend cfg "  !"
+				}
 			}
 			lappend cfg " exit-address-family"
 			lappend cfg " !"
