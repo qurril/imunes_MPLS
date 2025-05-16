@@ -7879,7 +7879,7 @@ proc configGUI_mpls {tab node_id} {
     $ruleTree heading DIPLabel -text "DestIP/Label"
     $ruleTree heading OutLabel -text "OutLabel"
     $ruleTree heading Action -text "Action"
-    $ruleTree heading ExitIf -text "ExitIf"
+    $ruleTree heading ExitIf -text "Gateway"
     $ruleTree heading Type -text "Type"
 
     $ruleTree column DIPLabel -width 100
