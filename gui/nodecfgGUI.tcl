@@ -8197,19 +8197,43 @@ proc configGUI_mplsApply {wi node_id} {
 #   * node_id -- node id
 #****
 proc configGUI_onActionSelected {node_id wi} {
-    global selectedAction
+    global selectedAction node_cfg
+
+    set subnet_gws {}
+    set subnet_data {}
+
+    set neighbors_ip {}
+
+    foreach iface_id [_ifcList $node_cfg] {
+        lassign [getSubnetData $node_id $iface_id {} {} 0] subnet_gws subnet_data
+   
+        dict for {node ifaces} $subnet_data {
+            if {$node ne $node_id && [getNodeType $node] in "mplsrouter router nat64 extnat"} {
+               
+                foreach intfc $ifaces {
+                    set tmp ""
+                    regexp {^[^/]+} [getIfcIPv4addrs $node $intfc ] tmp
+                    if {$tmp ne ""} {
+                        lappend neighbors_ip $tmp
+                    }
+
+                }
+            }
+        }
+    }
+    
 
     switch $selectedAction {
         "Pop" {
-            $wi.gatwayBox configure -values [get_neighbor_IP $node_id 0]
+            $wi.gatwayBox configure -values $neighbors_ip
             $wi.entry3 configure -state disabled
         }
         "Set" {
-            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 0]
+            $wi.gatwayBox configure -values  $neighbors_ip
             $wi.entry3 configure -state enabled
         }
         "Forward" {
-            $wi.gatwayBox configure -values  [get_neighbor_IP $node_id 1]
+            $wi.gatwayBox configure -values  $neighbors_ip
             $wi.entry3 configure -state enabled
         }
         
